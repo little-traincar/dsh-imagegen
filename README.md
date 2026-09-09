@@ -64,3 +64,7 @@ allowBuilds:
 | `src/client/*` | 设置页（imagegen 分区）+ `generate_image` 会话行（画廊展示） |
 | `cordis.patch.yml` | 组合包 patch（安装时自动应用） |
 | `scripts/build.mjs` → `lib/` | 发布构建（含 `prepare`，供 GitHub 直装） |
+
+## 开发状态
+
+本项目由 AI 辅助开发（vibe coding）完成，已通过本地冒烟测试与真实 API 调用验证（豆包真机出图、水印关闭、附件入库、会话内嵌均实测通过）；发现异常欢迎提 issue 或 PR。
