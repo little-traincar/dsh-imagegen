@@ -43,16 +43,10 @@ allowBuilds:
 | `outDir` | 启动目录下 `generated-images` | 落盘目录（绝对路径） |
 | `count` / `aspect` / `attachToConversation` / `requestTimeoutMs` | 2 / 2:3 / true / 300000 | 出图习惯 |
 
-## 密钥安全
-
-- API key 只存 DSH 设置文档（`$DSH_HOME/settings.yaml`），*；字段为 `role('secret')`，界面永不回显。
-- 水印：请求显式 `watermark: false`；若服务商因合规强制标识，以其规则为准。
-
 ## 开发
 
 - `npm install && npm run build` → 产出 `lib/index.js`（Host）+ `lib/client.js`（浏览器 bundle）。
 - 依赖版本与目标 dsh 版本配套（alpha 生态）；若安装报“版本不存在”，把 `package.json` 依赖版本对齐到你的 dsh 版本。
-- 冒烟：在 checkout 根目录运行 `node --import tsx <工作区>/imagegen-smoke.mjs`。
 
 ## 结构
 
@@ -64,6 +58,6 @@ allowBuilds:
 | `cordis.patch.yml` | 组合包 patch（安装时自动应用） |
 | `scripts/build.mjs` → `lib/` | 发布构建（含 `prepare`，供 GitHub 直装） |
 
-## 开发状态
+## 其他
 
 本项目由 AI 辅助开发（vibe coding）完成，已通过本地冒烟测试与真实 API 调用验证（豆包真机出图、水印关闭、附件入库、会话内嵌均实测通过）；发现异常欢迎提 issue 或 PR。
