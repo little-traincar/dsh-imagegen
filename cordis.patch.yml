@@ -1,7 +1,7 @@
 # dsh-imagegen 组合包 patch：安装进 profile 时由 dsh 自动应用本层。
 - insert:
     - id: imagegen
-      name: dsh-imagegen
+      name: '@little-traincar/dsh-imagegen'
       config:
         defaultProvider: doubao
         apiKeys: { doubao: '', qwen: '' }

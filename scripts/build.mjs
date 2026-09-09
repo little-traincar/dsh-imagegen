@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const CLIENT_ID = 'dsh-imagegen'
+const CLIENT_ID = '@little-traincar/dsh-imagegen'
 
 let esbuildMain
 try {

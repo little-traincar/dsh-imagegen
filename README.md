@@ -6,10 +6,10 @@
 
 ```powershell
 # npm
-dsh plugin --profile <名字> add dsh-imagegen
+dsh plugin --profile <名字> add @little-traincar/dsh-imagegen
 
 # GitHub 直装（拉源码，依赖本包的 prepare 构建脚本）
-dsh plugin --profile <名字> add github:你的用户名/dsh-imagegen#<commit-sha>
+dsh plugin --profile <名字> add github:little-traincar/dsh-imagegen#v0.1.0
 
 # tarball
 dsh plugin --profile <名字> add ./dsh-imagegen-0.1.0.tgz
@@ -19,7 +19,7 @@ GitHub 安装首次会被 pnpm 拦截构建授权：按 `dsh` 提示把包键加
 
 ```yaml
 allowBuilds:
-  dsh-imagegen: true
+  '@little-traincar/dsh-imagegen': true
 ```
 
 （源码 checkout 用户也可以：`pnpm dsh web --patch <仓库>/imagegen/cordis.yml`）
