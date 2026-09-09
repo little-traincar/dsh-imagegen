@@ -8,7 +8,7 @@
 # npm
 dsh plugin --profile <名字> add @little-traincar/dsh-imagegen
 
-# GitHub 直装（拉源码，依赖本包的 prepare 构建脚本）
+# GitHub 
 dsh plugin --profile <名字> add github:little-traincar/dsh-imagegen#v0.1.1
 
 # tarball
