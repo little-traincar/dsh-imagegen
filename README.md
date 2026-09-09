@@ -39,6 +39,8 @@ allowBuilds:
 
 图片内嵌显示在对话里，并存档到 `outDir`（默认 `<启动目录>/generated-images`，可在设置或 patch 里改）。
 
+**图生图**：把图贴进会话（或给本地绝对路径/URL），说“把这张图改成国潮风 / 换个背景”——agent 会通过 `image` 参数基于参考图重绘。
+
 ## 配置（优先级：GUI 设置 > cordis.patch.yml > 环境变量）
 
 | 项 | 默认 | 说明 |

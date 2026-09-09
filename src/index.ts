@@ -53,6 +53,10 @@ const LIMITS = {
   maxCount: 4,
   seedMin: 0,
   seedMax: 2_147_483_647,
+  /** 参考图：本地文件读取上限。 */
+  imageFileBytes: 10 * 1024 * 1024,
+  /** 参考图：base64 data URI 长度上限。 */
+  imageDataUri: 15 * 1024 * 1024,
 } as const
 
 export interface Config {
@@ -150,6 +154,31 @@ function validateRequest(args: Record<string, unknown>, outDir: string): { count
   if (outDir.length === 0) throw new Error('generate_image: 未配置落盘目录（cordis.yml 的 config.outDir）')
   if (!isAbsolute(outDir)) throw new Error(`generate_image: outDir 必须是绝对路径，当前为 ${outDir}`)
   return { count: (count ?? 2) as number, seed: args.seed as number | undefined }
+}
+
+/** 解析参考图入参：URL 原样透传；data URI 校验后透传；本地绝对路径读成 base64。 */
+async function resolveImageInput(raw: unknown): Promise<string | undefined> {
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'string') throw new Error('generate_image: image 必须是字符串（URL / 本地绝对路径 / data URI）')
+  const value = raw.trim()
+  if (value === '') return undefined
+  if (/^https?:\/\//iu.test(value)) return value
+  if (/^data:image\/[a-z0-9.+-]+;base64,/iu.test(value)) {
+    if (value.length > LIMITS.imageDataUri) throw new Error(`generate_image: 参考图 data URI 超过 ${Math.round(LIMITS.imageDataUri / 1024 / 1024)}MB`)
+    return value
+  }
+  if (!isAbsolute(value)) throw new Error(`generate_image: image 本地路径必须是绝对路径，当前为 ${value}`)
+  let data: Buffer
+  try {
+    data = await readFile(value)
+  } catch {
+    throw new Error(`generate_image: 读取参考图失败（文件不存在或不可读）：${value}`)
+  }
+  if (data.byteLength === 0) throw new Error(`generate_image: 参考图是空文件：${value}`)
+  if (data.byteLength > LIMITS.imageFileBytes) throw new Error(`generate_image: 参考图超过 ${Math.round(LIMITS.imageFileBytes / 1024 / 1024)}MB`)
+  const ext = extname(value).toLowerCase()
+  const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg'
+  return `data:${mime};base64,${data.toString('base64')}`
 }
 
 /** 单张图片生成结果（落盘 + 可选附件）的规范值片段。 */
@@ -296,9 +325,11 @@ export function apply(ctx: Context, config: Config): void {
         + '(3) always state an explicit art style and palette in the description to avoid the model\u2019s default plain light-color look; '
         + '(4) default aspect is portrait 2:3 (poster); pass aspect for other ratios; '
         + '(5) pass count > 1 to produce candidates to choose from; '
-        + '(6) the result contains ready-to-use Markdown image links — embed them verbatim in your reply so the images display inline in the conversation.',
+        + '(6) the result contains ready-to-use Markdown image links — embed them verbatim in your reply so the images display inline in the conversation; '
+        + '(7) to modify, restyle, or reference an existing image (image-to-image), pass it via the image parameter (an http(s) URL, an absolute local file path, or a data URI) and describe the desired change in prompt.',
       parameters: {
-        prompt: { type: 'string', required: true, description: '完整画面描述（中文即可）：主体内容、构图、风格、主色调/氛围。必须包含明确的风格与配色描述。' },
+        prompt: { type: 'string', required: true, description: '完整画面描述（中文即可）：主体内容、构图、风格、主色调/氛围。必须包含明确的风格与配色描述。图生图时描述期望的修改/风格。' },
+        image: { type: 'string', description: '参考图（可选）：http(s) URL、本地文件绝对路径，或 data:image/...;base64,...。提供后为图生图/基于参考图的修改重绘。' },
         provider: { type: 'string', enum: ['doubao', 'qwen'], description: '服务商：doubao（默认，视觉优先）或 qwen（文字更准）。不填用配置默认。' },
         aspect: { type: 'string', enum: ['1:1', '2:3', '3:4', '9:16', '16:9'], description: '长宽比，默认 2:3（竖版海报）。' },
         count: { type: 'integer', description: '生成几张候选（1–4），默认取配置值 2。' },
@@ -367,6 +398,8 @@ export function apply(ctx: Context, config: Config): void {
         const endpoint = providerEndpoint(provider)
         const size = DEFAULT_SIZES[provider][aspect]
         const prompt = buildPrompt((args.prompt as string).trim(), args.text_lines as string[] | undefined)
+        // 参考图一次解析、全量复用（读文件/校验都发生在任何 API 请求之前）。
+        const imageInput = await resolveImageInput(args.image)
         const outDir = cfg.outDir
         // 超时与调用方取消合并：任何一方触发即中止所有等待。
         const signal = AbortSignal.any([
@@ -380,12 +413,13 @@ export function apply(ctx: Context, config: Config): void {
           const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
           const suffix = `${stamp}-${index + 1}-${randomUUID().slice(0, 4)}`
           const image: GeneratedImage = provider === 'doubao'
-            ? await doubaoGenerateImage({ apiKey, model, prompt, size, endpoint, signal })
+            ? await doubaoGenerateImage({ apiKey, model, prompt, size, image: imageInput, endpoint, signal })
             : await qwenGenerateImage({
                 apiKey,
                 model,
                 prompt,
                 size,
+                image: imageInput,
                 endpoint,
                 seed: validated.seed === undefined ? undefined : validated.seed + index,
                 negativePrompt: NEGATIVE_PROMPT,

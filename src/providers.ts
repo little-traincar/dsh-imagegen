@@ -122,38 +122,44 @@ async function decodeImageResponse(response: Response, label: string, signal?: A
   throw new Error(`[imagegen] ${label} 响应里没有图片数据: ${JSON.stringify(payload).slice(0, 300)}`)
 }
 
-/** 豆包 Seedream 单张生成。 */
+/** 豆包 Seedream 单张生成（endpoint 可覆盖；带 image 即图生图/参考重绘）。 */
 export async function doubaoGenerateImage(options: {
   apiKey: string
   model: string
   prompt: string
   size: string
+  /** 参考图：URL 或 data:image/...;base64,...（单张字符串）。 */
+  image?: string
   endpoint?: string
   signal?: AbortSignal
 }): Promise<GeneratedImage> {
+  const body: Record<string, unknown> = {
+    model: options.model,
+    prompt: options.prompt,
+    size: options.size,
+    response_format: 'b64_json',
+    watermark: false, // 硬性要求：不加水印
+  }
+  if (options.image !== undefined) body.image = options.image
   const response = await fetchWithRetry(options.endpoint ?? DEFAULT_ENDPOINTS.doubao, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       authorization: `Bearer ${options.apiKey}`,
     },
-    body: JSON.stringify({
-      model: options.model,
-      prompt: options.prompt,
-      size: options.size,
-      response_format: 'b64_json',
-      watermark: false, // 硬性要求：不加水印
-    }),
+    body: JSON.stringify(body),
   }, options.signal)
   return decodeImageResponse(response, `豆包 ${options.model}`, options.signal)
 }
 
-/** 阿里 qwen-image 单张生成。 */
+/** 阿里 qwen-image 单张生成（endpoint 可覆盖；带 image 即图生图/参考重绘）。 */
 export async function qwenGenerateImage(options: {
   apiKey: string
   model: string
   prompt: string
   size: string
+  /** 参考图：URL 或 data:image/...;base64,... */
+  image?: string
   seed?: number
   negativePrompt?: string
   endpoint?: string
@@ -168,6 +174,7 @@ export async function qwenGenerateImage(options: {
     watermark: false, // 默认即 false，显式声明防回归
     prompt_extend: false, // 禁止平台改写提示词，保证文字逐字呈现
   }
+  if (options.image !== undefined) body.image = options.image
   if (options.seed !== undefined) body.seed = options.seed
   if (options.negativePrompt !== undefined) body.negative_prompt = options.negativePrompt
   const response = await fetchWithRetry(options.endpoint ?? DEFAULT_ENDPOINTS.qwen, {
