@@ -9,7 +9,7 @@
 dsh plugin --profile <名字> add @little-traincar/dsh-imagegen
 
 # GitHub 直装（拉源码，依赖本包的 prepare 构建脚本）
-dsh plugin --profile <名字> add github:little-traincar/dsh-imagegen#v0.1.0
+dsh plugin --profile <名字> add github:little-traincar/dsh-imagegen#v0.1.1
 
 # tarball
 dsh plugin --profile <名字> add ./dsh-imagegen-0.1.0.tgz
