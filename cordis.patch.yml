@@ -1,0 +1,17 @@
+# dsh-imagegen 组合包 patch：安装进 profile 时由 dsh 自动应用本层。
+- insert:
+    - id: imagegen
+      name: dsh-imagegen
+      config:
+        defaultProvider: doubao
+        apiKeys: { doubao: '', qwen: '' }
+        baseUrls: { doubao: '', qwen: '' }
+        models:
+          doubao: doubao-seedream-5-0-pro-260628
+          qwen: qwen-image-3.0-pro
+        # 默认落盘到启动 dsh 的目录下；可在设置或本文件改成任意绝对路径
+        outDir: !!js process.cwd() + '/generated-images'
+        attachToConversation: true
+        count: 2
+        aspect: '2:3'
+        requestTimeoutMs: 300000

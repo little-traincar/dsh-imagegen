@@ -1,0 +1,22 @@
+# imagegen 生图插件 overlay（入口层配置样例）。
+# 生产入口已持久化在 $DSH_HOME/profiles/web/cordis.patch.yml，本文件仅作本地 --patch 加载用途：
+#   pnpm dsh web --patch "D:\deepseek\deepseek-harness\scratch-plugins\imagegen\cordis.yml"
+- insert:
+    - id: imagegen
+      name: 'D:/deepseek/deepseek-harness/scratch-plugins/imagegen/src/index.ts'
+      config:
+        defaultProvider: doubao   # doubao | qwen
+        apiKeys:                  # 留空读环境变量 ARK_API_KEY / DASHSCOPE_API_KEY；推荐在 GUI 设置页填写
+          doubao: ''
+          qwen: ''
+        baseUrls:                 # 留空 = 官方默认；可指向任意 OpenAI 风格 /images/generations 服务
+          doubao: ''
+          qwen: ''
+        models:                   # 豆包别名会 404，必须用快照 ID
+          doubao: doubao-seedream-5-0-pro-260628
+          qwen: qwen-image-3.0-pro
+        outDir: 'D:\deepseek\harness-work\something_test\generated-images'
+        attachToConversation: true
+        count: 2                  # 默认候选张数（1–4）
+        aspect: '2:3'             # 默认竖版海报比例
+        requestTimeoutMs: 300000
