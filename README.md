@@ -2,7 +2,7 @@
 
 给 DeepSeek Harness 的 agent 注册 `generate_image` 工具：豆包 Seedream 5.0 Pro（默认，视觉强）/ qwen-image-3.0-pro（文字更稳）。**无水印、文案逐字、多张候选、图片落盘 + 会话内联显示**，凭据在 GUI 设置页填写。
 
-## 安装（用户视角）
+## 安装
 
 ```powershell
 # npm
@@ -45,8 +45,7 @@ allowBuilds:
 
 ## 密钥安全
 
-- API key 只存 DSH 设置文档（`$DSH_HOME/settings.yaml`），**仓库不含任何凭据**；字段为 `role('secret')`，界面永不回显。
-- 若 key 曾在会话日志中出现过（例如调试时读取设置文件），公开仓库前到服务商控制台**轮换一次**。
+- API key 只存 DSH 设置文档（`$DSH_HOME/settings.yaml`），*；字段为 `role('secret')`，界面永不回显。
 - 水印：请求显式 `watermark: false`；若服务商因合规强制标识，以其规则为准。
 
 ## 开发
