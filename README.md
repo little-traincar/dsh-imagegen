@@ -48,15 +48,6 @@ allowBuilds:
 - `npm install && npm run build` → 产出 `lib/index.js`（Host）+ `lib/client.js`（浏览器 bundle）。
 - 依赖版本与目标 dsh 版本配套（alpha 生态）；若安装报“版本不存在”，把 `package.json` 依赖版本对齐到你的 dsh 版本。
 
-## 结构
-
-| 文件 | 作用 |
-|---|---|
-| `src/index.ts` | Host：工具契约 + 入参校验 + 内联路由 + 设置命名空间 |
-| `src/providers.ts` | 两家 HTTP 适配：重试/退避、字节签名嗅探、`watermark: false` |
-| `src/client/*` | 设置页（imagegen 分区）+ `generate_image` 会话行（画廊展示） |
-| `cordis.patch.yml` | 组合包 patch（安装时自动应用） |
-| `scripts/build.mjs` → `lib/` | 发布构建（含 `prepare`，供 GitHub 直装） |
 
 ## 其他
 
