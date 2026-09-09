@@ -15,6 +15,12 @@ dsh plugin --profile <名字> add github:little-traincar/dsh-imagegen#v0.1.1
 dsh plugin --profile <名字> add ./dsh-imagegen-0.1.0.tgz
 ```
 
+## 删除
+```
+# pnpm
+dsh plugin --profile web remove @little-traincar/dsh-imagegen
+```
+
 GitHub 安装首次会被 pnpm 拦截构建授权：按 `dsh` 提示把包键加进该 profile 的 `pnpm-workspace.yaml`：
 
 ```yaml
