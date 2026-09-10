@@ -1,3 +1,4 @@
+[English](README.md) | [简体中文](README.zh.md)
 # dsh-imagegen —— DSH 生图插件
 
 给 DeepSeek Harness 的 agent 注册 `generate_image` 工具：doubao Seedream 5.0 Pro/ qwen-image-3.0-pro。

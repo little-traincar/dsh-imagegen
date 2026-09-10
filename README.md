@@ -1,3 +1,4 @@
+[English](README.md) | [简体中文](README.zh.md)
 # dsh-imagegen---DSH RAW Image Plugin
 
 Register the 'generate_image' tool for DeepSeek Harness agent: doubao Seedream 5.0 Pro / qwen-image-3.
@@ -52,5 +53,7 @@ The image is embedded and displayed in the conversation, and saved to 'outdir' (
 
 ## other
 The dependent version is matched with the target DSH version; If the installation report says' version does not exist ', align the' package. json 'dependent version to your DSH version.
+
 If you encounter the inability to input APIs, please check your DSH version. This plugin is developed based on 0.1.3-alpha. 2.
+
 This project was completed with AI assisted development (Vibe coding) and has passed local smoke testing and real API call verification (real machine image output, watermark closure, attachment storage, and session embedding have all been tested and passed); If any abnormalities are found, please feel free to raise an issue or PR.
