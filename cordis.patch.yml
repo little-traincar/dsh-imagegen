@@ -12,6 +12,7 @@
         # 默认落盘到启动 dsh 的目录下；可在设置或本文件改成任意绝对路径
         outDir: !!js process.cwd() + '/generated-images'
         attachToConversation: true
-        count: 2
+        # count 有意不在此覆盖：默认张数由 Config schema 的 default(LIMITS.minCount) 决定，
+        # 避免"配置文件与代码默认值不一致"导致的行为分歧。需要多张请在调用时显式传 count。
         aspect: '2:3'
         requestTimeoutMs: 300000

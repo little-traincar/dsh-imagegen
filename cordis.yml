@@ -17,6 +17,6 @@
           qwen: qwen-image-3.0-pro
         outDir: 'D:\deepseek\harness-work\something_test\generated-images'
         attachToConversation: true
-        count: 2                  # 默认候选张数（1–4）
+        # count 不在此覆盖：默认张数由 Config schema 决定（当前为 1）。
         aspect: '2:3'             # 默认竖版海报比例
         requestTimeoutMs: 300000
