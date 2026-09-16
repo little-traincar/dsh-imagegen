@@ -30,21 +30,25 @@ export const DEFAULT_ENDPOINTS: Record<Provider, string> = {
   qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1/images/generations',
 }
 
-/** 每家按长宽比的默认分辨率（豆包 1152x2048 ≈ 236 万像素，落在 0.3 元档）。 */
+/**
+ * 每家按长宽比的默认分辨率。
+ * 竖版 1152x2048 ≈ 236 万像素，落在豆包 0.3 元档；
+ * 横版 16:9 提升到 2560x1440（QHD，≈ 369 万像素）以获得 2K 画质，计费档位可能上浮。
+ */
 export const DEFAULT_SIZES: Record<Provider, Record<Aspect, string>> = {
   doubao: {
     '1:1': '2048x2048',
     '2:3': '1152x2048',
     '3:4': '1536x2048',
     '9:16': '1080x1920',
-    '16:9': '1920x1080',
+    '16:9': '2560x1440',
   },
   qwen: {
     '1:1': '2048*2048',
     '2:3': '1152*2048',
     '3:4': '1536*2048',
     '9:16': '1080*1920',
-    '16:9': '1920*1080',
+    '16:9': '2560*1440',
   },
 }
 
