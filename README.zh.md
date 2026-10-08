@@ -29,6 +29,8 @@ dsh plugin --profile desktop add @little-traincar/dsh-imagegen
 
 重新打开 Desktop 即可加载。
 
+![Alt text](1-1.png)
+
 ### Web 端
 
 ```powershell

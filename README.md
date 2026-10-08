@@ -29,6 +29,8 @@ dsh plugin --profile desktop add @little-traincar/dsh-imagegen
 
 Reopen Desktop to load it.
 
+![Alt text](1.png)
+
 ### Web
 
 ```powershell
