@@ -1,59 +1,148 @@
+# dsh-imagegen
+
 [English](README.md) | [简体中文](README.zh.md)
-# dsh-imagegen---DSH RAW Image Plugin
 
-Register the 'generate_image' tool for DeepSeek Harness agent: doubao Seedream 5.0 Pro / qwen-image-3.
+Image generation plugin for DeepSeek Harness. Registers the `generate_image` tool so the agent can create images and show them inline in the conversation.
 
-# setup
+## Features
+
+- **Inline images** — generated images are attached to the conversation and render directly in chat (plus a same-origin `/imagegen/<file>` link as a fallback).
+- **User-configurable model** — every channel's model id is yours to fill in, in Settings. Aliases and per-call overrides included.
+- **Open provider table** — built-in Doubao Seedream and Aliyun qwen, plus any OpenAI-compatible `/images/generations` endpoint: gateways, relays, or local deployments (Ollama / vLLM / SD-WebUI / ComfyUI).
+- **Watermark-free** — `watermark: false` is sent by default; the switch exists for the models that reject the field.
+- **Verbatim in-image text** — text you supply is embedded character by character, never reworded.
+- **Image-to-image** — pass a reference image (URL, absolute local path, or data URI) and describe the change.
+- **Saved to disk** — every image is written to `outDir` before it is returned.
+- **Several candidates in one call** — channels that declare `supportsN` produce multiple images from a single request.
+- **Partial failures survive** — if some of the requested images fail, the successful ones are kept and the failures are listed.
+- **Requires DSH 0.2.x** (0.2.0-rc.2 / 0.2.1-alpha.1).
+
+## Installation
+
+### Desktop
+
+Launch Desktop once so it creates its profile, then **fully quit the application** before running the command.
 
 ```powershell
-# npm 
-dsh plugin --profile <name> add @little-traincar/dsh-imagegen
-
-# Github
-dsh plugin --profile <name> add github:little-traincar/dsh-imagegen#v0.1.1
-
-# tarball
-dsh plugin --profile <name> add ./dsh-imagegen-0.1.0.tgz
+dsh plugin --profile desktop add @little-traincar/dsh-imagegen
 ```
 
-GitHub installation will be intercepted by pnpm for the first-time build authorization: add the package key to the profile's `pnpm-workspace.yaml` as prompted by `dsh`.
+Reopen Desktop to load it.
 
-```yaml
-allowBuilds:
-  '@little-traincar/dsh-imagegen': true
-```
-(Source code checkout users can also: ` pnpm dsh web -- patch<repository>/imagegen/codes. yml `)
+### Web
 
-## delete
-```
-# pnpm
-dsh plugin --profile <name> remove @little-traincar/dsh-imagegen
+```powershell
+dsh plugin --profile web add @little-traincar/dsh-imagegen
 ```
 
-## use
-1.Restart dsh ->Settings ->Imagegen ->Fill in Bean Pack/QWEN Key ->Save (with immediate effect; you can also use the environment variables' ARK_API_KEY '/' DASHSCOPE.API_KEY ').
+Restart the web profile to load it.
 
-2.In the conversation, it was mentioned that there is a need.
+### From GitHub (a specific tag)
 
-> for example: Draw a summer coffee shop promotion poster: retro magazine collage style, cream yellow+coffee brown, vertical version; Text: Main title "Summer Ice Cafe Festival" sub title "Half price for the second cup of the entire event";
+```powershell
+dsh plugin --profile desktop add github:little-traincar/dsh-imagegen#v0.3.1
+```
 
-The image is embedded and displayed in the conversation, and saved to 'outdir' (default '<startup directory>/generated images', can be changed in settings or patches).
+### From a local checkout or tarball
 
-**Map generation * *: paste the map into the session (or give the local absolute path/URL) and say "change this map to China-Chic style/change the background" - the agent will redraw based on the reference map through the 'image' parameter.
+```powershell
+dsh plugin --profile desktop add ./
+dsh plugin --profile desktop add ./little-traincar-dsh-imagegen-0.3.1.tgz
+```
 
-## Configuration (Priority: GUI Settings>cordis. catch. yml>Environment Variables)
+## Configuration
 
-| item | default | explanation |
+Open **Settings → imagegen**, fill in an API key for the channel you want to use, then save. Settings are written to the profile's `cordis.patch.yml` and take effect on the next generation call — no restart.
+
+### Built-in providers
+
+| Channel | Default model | API key |
 |---|---|---|
-| `apiKeys.*` | NULL | doubao / qwen key;environment variable `ARK_API_KEY` / `DASHSCOPE_API_KEY` |
-| `baseUrls.*` | official | Can point to any OpenAI style `/images/generations` Compatible gateway |
-| `models.*` | snapshot ID | Doubao alias will be 404, do not change it back `doubao-seedream-5-0-pro` |
-| `outDir` |  Under the startup directory`generated-images` | Disk directory (absolute path) |
-| `count` / `aspect` / `attachToConversation` / `requestTimeoutMs` | 2 / 2:3 / true / 300000 | picture habit |
+| `doubao` | `doubao-seedream-5-0-pro-260628` | Volcengine Ark console, or env `ARK_API_KEY` |
+| `qwen` | `qwen-image-3.0-pro` | Alibaba Bailian / DashScope console, or env `DASHSCOPE_API_KEY` |
+| your own | you choose | see Custom providers |
 
-## other
-The dependent version is matched with the target DSH version; If the installation report says' version does not exist ', align the' package. json 'dependent version to your DSH version.
+### Custom providers
 
-If you encounter the inability to input APIs, please check your DSH version. This plugin is developed based on 0.1.3-alpha. 2.
+Any OpenAI-style `POST <baseUrl>/images/generations` works. Declare it in the **Custom providers** field:
 
-This project was completed with AI assisted development (Vibe coding) and has passed local smoke testing and real API call verification (real machine image output, watermark closure, attachment storage, and session embedding have all been tested and passed); If any abnormalities are found, please feel free to raise an issue or PR.
+```json
+{
+  "local": {
+    "baseUrl": "http://127.0.0.1:11434/v1",
+    "model": "x/flux2-klein",
+    "apiKeyOptional": true,
+    "sendWatermark": false,
+    "sendPromptExtend": false,
+    "size": "1024x1024"
+  }
+}
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `baseUrl` | required | bare host gets `/v1/images/generations`; a `/v1` suffix gets `/images/generations` |
+| `model` | required | fallback model id for this channel |
+| `apiKey` / `apiKeyEnv` | empty | inline key, or read from an environment variable (fallback `IMAGE_API_KEY` / `OPENAI_API_KEY`) |
+| `apiKeyOptional` | false | keyless endpoints (local deployments) must opt in |
+| `authHeader` / `authScheme` | `authorization` / `Bearer ` | auth header name and prefix |
+| `size` / `sizes` | 1024x1024 tier | fixed size, or a per-aspect table |
+| `sizeSeparator` | `x` | `*` for Alibaba-style sizes |
+| `supportsN` / `maxN` | false / 4 | several images in one request |
+| `sendWatermark` | true | set false for models that reject `watermark` |
+| `sendN` / `sendSeed` / `sendNegativePrompt` | true | turn off parameters a model rejects |
+| `sendPromptExtend` | false | true sends `prompt_extend:false` |
+| `imageField` | `image` | reference-image field; `false` disables image-to-image |
+| `responseFormat` | `b64_json` | or `url` |
+| `extraBody` | empty | vendor-private fields |
+
+### Models
+
+Each channel's model id is editable, in three places:
+
+1. **Settings → imagegen → Models** — one model-id field per channel. Saving it empty clears the override and restores the built-in default.
+2. **Model details** (or `cordis.patch.yml`) — the whole map at once, with optional aliases:
+
+```json
+{
+  "doubao": "doubao-seedream-5-0-pro-260628",
+  "qwen": "qwen-image-3.0-pro",
+  "relay/gpt-image": { "id": "gpt-image-1", "label": "Gateway GPT-Image" }
+}
+```
+
+A key is either `<channel>` (that channel's default model) or `<channel>/<alias>`. An alias can be named in a tool call:
+
+```
+generate_image(prompt="…", provider="relay", model="gpt-image")
+```
+
+Any other `model` value is passed through verbatim as a model id. The result reports the `provider` and `model` actually used.
+
+## Usage
+
+Ask for an image in the conversation — for example: “Draw a summer coffee-shop poster: retro magazine collage, cream yellow and coffee brown, portrait; headline ‘Summer Ice Cafe Festival’, subtitle ‘Half price for the second cup’.”
+
+The agent calls `generate_image` and the images appear inline. Every image is also written to `outDir` (default: `generated-images` under the directory dsh was started in).
+
+## Uninstallation
+
+### Desktop
+
+Fully quit the application first, then:
+
+```powershell
+dsh plugin --profile desktop remove @little-traincar/dsh-imagegen
+```
+
+### Web
+
+```powershell
+dsh plugin --profile web remove @little-traincar/dsh-imagegen
+```
+
+The command removes the bundle from the profile and uninstalls the package; restart the profile to finish unloading it. Generated images under `outDir` and the `imagegen` section of the profile's `cordis.patch.yml` are left in place — delete them yourself if you want a clean sweep.
+
+## License
+
+MIT

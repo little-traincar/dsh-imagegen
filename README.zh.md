@@ -1,59 +1,148 @@
-[English](README.md) | [简体中文](README.zh.md)
-# dsh-imagegen —— DSH 生图插件
+# dsh-imagegen
 
-给 DeepSeek Harness 的 agent 注册 `generate_image` 工具：doubao Seedream 5.0 Pro/ qwen-image-3.0-pro。
+[English](README.md) | [简体中文](README.zh.md)
+
+DeepSeek Harness 的生图插件。注册 `generate_image` 工具，让 agent 能生成图片并直接内嵌显示在对话里。
+
+## 功能
+
+- **对话内嵌显示** —— 生成的图片作为会话附件直接显示在对话里（另附同源 `/imagegen/<文件名>` 链接作为兜底）。
+- **模型可自由配置** —— 每个通道用哪个模型由你在设置页自己填，支持别名与单次调用覆盖。
+- **通道开放式** —— 内置豆包 Seedream 与阿里 qwen，另外任何 OpenAI 风格的 `/images/generations` 服务都能接：中转站、聚合网关、本地部署（Ollama / vLLM / SD-WebUI / ComfyUI）。
+- **无水印** —— 默认发送 `watermark: false`；给不认这个字段的模型留了开关。
+- **图内文案逐字呈现** —— 你给的文字按字嵌入，不会被改写。
+- **图生图** —— 传参考图（URL、本地绝对路径或 data URI）并描述要改成什么样。
+- **落盘保存** —— 每张图在返回前先写入 `outDir`。
+- **一次出多张** —— 声明了 `supportsN` 的通道可以用一个请求产出多张候选。
+- **部分失败不丢图** —— 多张里有失败的，成功的照常保留，失败原因逐条列出。
+- **要求 DSH 0.2.x**（0.2.0-rc.2 / 0.2.1-alpha.1）。
 
 ## 安装
 
+### 桌面端
+
+先启动一次 Desktop 让它建好 profile，然后**完全退出应用**，再执行：
+
 ```powershell
-# npm
-dsh plugin --profile <名字> add @little-traincar/dsh-imagegen
-
-# GitHub 
-dsh plugin --profile <名字> add github:little-traincar/dsh-imagegen#v0.1.1
-
-# tarball
-dsh plugin --profile <名字> add ./dsh-imagegen-0.1.0.tgz
+dsh plugin --profile desktop add @little-traincar/dsh-imagegen
 ```
 
-GitHub 安装首次会被 pnpm 拦截构建授权：按 `dsh` 提示把包键加进该 profile 的 `pnpm-workspace.yaml`：
+重新打开 Desktop 即可加载。
 
-```yaml
-allowBuilds:
-  '@little-traincar/dsh-imagegen': true
+### Web 端
+
+```powershell
+dsh plugin --profile web add @little-traincar/dsh-imagegen
 ```
 
-（源码 checkout 用户也可以：`pnpm dsh web --patch <仓库>/imagegen/cordis.yml`）
+重启 web profile 即可加载。
 
-## 删除
+### 从 GitHub 安装（指定 tag）
+
+```powershell
+dsh plugin --profile desktop add github:little-traincar/dsh-imagegen#v0.3.1
 ```
-# pnpm
-dsh plugin --profile <名字> remove @little-traincar/dsh-imagegen
+
+### 从本地目录或 tarball 安装
+
+```powershell
+dsh plugin --profile desktop add ./
+dsh plugin --profile desktop add ./little-traincar-dsh-imagegen-0.3.1.tgz
 ```
+
+## 配置
+
+打开 **设置 → imagegen**，给要用的通道填上 API key，保存即可。配置写在 profile 的 `cordis.patch.yml` 里，下一次生图调用就生效，不用重启。
+
+### 内置通道
+
+| 通道 | 默认模型 | API key |
+|---|---|---|
+| `doubao` | `doubao-seedream-5-0-pro-260628` | 火山方舟控制台，或环境变量 `ARK_API_KEY` |
+| `qwen` | `qwen-image-3.0-pro` | 阿里百炼 / DashScope 控制台，或环境变量 `DASHSCOPE_API_KEY` |
+| 自定义 | 你自己填 | 见下面的「自定义通道」 |
+
+### 自定义通道
+
+任何 OpenAI 风格的 `POST <baseUrl>/images/generations` 都能用。在设置页的**自定义通道**里声明：
+
+```json
+{
+  "local": {
+    "baseUrl": "http://127.0.0.1:11434/v1",
+    "model": "x/flux2-klein",
+    "apiKeyOptional": true,
+    "sendWatermark": false,
+    "sendPromptExtend": false,
+    "size": "1024x1024"
+  }
+}
+```
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `baseUrl` | 必填 | 裸主机自动补 `/v1/images/generations`；以 `/v1` 结尾补 `/images/generations` |
+| `model` | 必填 | 该通道的兜底模型 id |
+| `apiKey` / `apiKeyEnv` | 空 | 直填 key，或从环境变量读（兜底 `IMAGE_API_KEY` / `OPENAI_API_KEY`） |
+| `apiKeyOptional` | false | 免鉴权端点（本地部署）必须显式打开 |
+| `authHeader` / `authScheme` | `authorization` / `Bearer ` | 鉴权头名与前缀 |
+| `size` / `sizes` | 1024x1024 档 | `size` 固定尺寸；`sizes` 按长宽比分档 |
+| `sizeSeparator` | `x` | 尺寸分隔符（阿里系用 `*`） |
+| `supportsN` / `maxN` | false / 4 | 一次请求出多张 |
+| `sendWatermark` | true | 模型不认 `watermark` 就设 false |
+| `sendN` / `sendSeed` / `sendNegativePrompt` | true | 逐个关掉模型不支持的参数 |
+| `sendPromptExtend` | false | 设为 true 会发 `prompt_extend:false` |
+| `imageField` | `image` | 参考图字段名；设 `false` 表示该通道不支持图生图 |
+| `responseFormat` | `b64_json` | 或 `url` |
+| `extraBody` | 空 | 追加供应商私有字段 |
+
+### 模型
+
+每个通道用哪个模型都可以改，三个入口：
+
+1. **设置 → imagegen → 模型** —— 每个通道一行「模型 id」。留空并保存 = 清除覆盖、回到内置默认。
+2. **模型明细**（或直接写 `cordis.patch.yml`）—— 整块写法，可带别名：
+
+```json
+{
+  "doubao": "doubao-seedream-5-0-pro-260628",
+  "qwen": "qwen-image-3.0-pro",
+  "relay/gpt-image": { "id": "gpt-image-1", "label": "中转站 GPT-Image" }
+}
+```
+
+键是 `<通道>`（该通道的默认模型）或 `<通道>/<别名>`。别名可以在调用时直接写：
+
+```
+generate_image(prompt="…", provider="relay", model="gpt-image")
+```
+
+其他 `model` 值一律按字面当作模型 id 透传。调用结果里会回显实际使用的 `provider` 与 `model`。
 
 ## 使用
 
-1. 重启 dsh → 设置 → imagegen → 填豆包/qwen key → 保存（即时生效；也可用环境变量 `ARK_API_KEY` / `DASHSCOPE_API_KEY`）。
-2. 会话里说需求：
+在对话里直接提需求即可，例如：「画一张夏日咖啡店促销海报：复古杂志拼贴风格，奶油黄配咖啡棕，竖版；主标题『夏日冰咖节』，副标题『全场第二杯半价』」。
 
-> 画一张夏日咖啡店促销海报：复古杂志拼贴风，奶油黄+咖啡棕，竖版；文字：主标题「夏日冰咖节」副标「全场第二杯半价」；
+agent 会调用 `generate_image`，图片内嵌显示在回复里。每张图同时落盘到 `outDir`（默认：dsh 启动目录下的 `generated-images`）。
 
-图片内嵌显示在对话里，并存档到 `outDir`（默认 `<启动目录>/generated-images`，可在设置或 patch 里改）。
+## 卸载
 
-**图生图**：把图贴进会话（或给本地绝对路径/URL），说“把这张图改成国潮风 / 换个背景”——agent 会通过 `image` 参数基于参考图重绘。
+### 桌面端
 
-## 配置（优先级：GUI 设置 > cordis.patch.yml > 环境变量）
+先完全退出应用，再执行：
 
-| 项 | 默认 | 说明 |
-|---|---|---|
-| `apiKeys.*` | 空 | 豆包 / qwen key；环境变量 `ARK_API_KEY` / `DASHSCOPE_API_KEY` |
-| `baseUrls.*` | 官方 | 可指向任意 OpenAI 风格 `/images/generations` 兼容网关 |
-| `models.*` | 快照 ID | 豆包别名会 404，勿改回 `doubao-seedream-5-0-pro` |
-| `outDir` | 启动目录下 `generated-images` | 落盘目录（绝对路径） |
-| `count` / `aspect` / `attachToConversation` / `requestTimeoutMs` | 2 / 2:3 / true / 300000 | 出图习惯 |
+```powershell
+dsh plugin --profile desktop remove @little-traincar/dsh-imagegen
+```
 
+### Web 端
 
-## 其他
-依赖版本与目标 dsh 版本配套；若安装报“版本不存在”，把 `package.json` 依赖版本对齐到你的 dsh 版本。
-如果遇到无法输入api，请检查你的dsh版本，本插件基于0.1.3-alpha.2开发。
-本项目由 AI 辅助开发（vibe coding）完成，已通过本地冒烟测试与真实 API 调用验证（豆包真机出图、水印关闭、附件入库、会话内嵌均实测通过）；发现异常欢迎提 issue 或 PR。
+```powershell
+dsh plugin --profile web remove @little-traincar/dsh-imagegen
+```
+
+命令会把 bundle 从 profile 里摘掉并卸载包；重启 profile 后彻底卸载完成。`outDir` 里已生成的图片、以及 profile `cordis.patch.yml` 里的 `imagegen` 配置段会保留——想一起清掉需要你自己删。
+
+## License
+
+MIT

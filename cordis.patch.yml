@@ -1,18 +1,41 @@
 # dsh-imagegen 组合包 patch：安装进 profile 时由 dsh 自动应用本层。
+#
+# 这里刻意只声明 entry（id = imagegen），不写 config：
+#   - 所有配置项都有 schema 默认值，首次启动不需要额外声明；
+#   - 用户在 GUI 设置页（设置 → imagegen）保存的值落在 profile 的 cordis.patch.yml，
+#     不会被本文件里的默认值覆盖。
+#
+# 需要让 GUI 之外的东西也固定下来时，再在这里补 config，例如：
+#
+# - insert:
+#     - id: imagegen
+#       name: '@little-traincar/dsh-imagegen'
+#       config:
+#         defaultProvider: doubao
+#         models:
+#           doubao: doubao-seedream-5-0-pro-260628
+#           qwen: qwen-image-3.0-pro
+#           # 别名写法：键是 "<通道>/<别名>"，工具入参 model 可直接用别名
+#           relay/gpt-image: gpt-image-1
+#         apiKeys: { doubao: '', qwen: '' }
+#         baseUrls: { doubao: '', qwen: '' }
+#         # 自定义通道：任何 OpenAI 风格 POST <baseUrl>/images/generations
+#         customProviders:
+#           relay:
+#             baseUrl: https://your-gateway.example.com/v1
+#             model: gpt-image-1
+#             apiKeyEnv: RELAY_API_KEY
+#           ollama:
+#             baseUrl: http://127.0.0.1:11434/v1
+#             model: x/flux2-klein
+#             apiKeyOptional: true
+#             sendWatermark: false
+#             sendPromptExtend: false
+#             size: 1024x1024
+#         outDir: !!js process.cwd() + '/generated-images'
+#         attachToConversation: true
+#         aspect: '2:3'
+#         requestTimeoutMs: 300000
 - insert:
     - id: imagegen
       name: '@little-traincar/dsh-imagegen'
-      config:
-        defaultProvider: doubao
-        apiKeys: { doubao: '', qwen: '' }
-        baseUrls: { doubao: '', qwen: '' }
-        models:
-          doubao: doubao-seedream-5-0-pro-260628
-          qwen: qwen-image-3.0-pro
-        # 默认落盘到启动 dsh 的目录下；可在设置或本文件改成任意绝对路径
-        outDir: !!js process.cwd() + '/generated-images'
-        attachToConversation: true
-        # count 有意不在此覆盖：默认张数由 Config schema 的 default(LIMITS.minCount) 决定，
-        # 避免"配置文件与代码默认值不一致"导致的行为分歧。需要多张请在调用时显式传 count。
-        aspect: '2:3'
-        requestTimeoutMs: 300000
