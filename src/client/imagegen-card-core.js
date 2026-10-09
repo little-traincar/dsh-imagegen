@@ -42,7 +42,14 @@ export const BUILTIN_KEY_ENV = {
 /** 内置通道名。 */
 export const BUILTIN_CHANNELS = ['doubao', 'qwen']
 
-/** 模型单元格里的键名（`<通道>/model`、`<通道>/label`）。 */
+/**
+ * 旧版卡片写在模型单元格里的键后缀（`<通道>/model`、`<通道>/label`）。
+ *
+ * 这两个键是 0.3.1 的缺陷产物：GUI 写的是 `<通道>/model`，而 Host 与卡片自己
+ * 都只读 `<通道>` / `<通道>/default`，于是「在设置页填了模型」永远不生效。
+ * 现在的规范键是 `models.<通道>`（见 modelPath）；这两个后缀只用于**读取**历史
+ * 配置、并在保存时把它迁移掉，不再作为写入目标。
+ */
 export const MODEL_ID_SUFFIX = 'model'
 export const MODEL_LABEL_SUFFIX = 'label'
 
@@ -120,13 +127,15 @@ export function envFallbackNames(channel) {
 }
 
 /**
- * 从配置值里读一个通道当前的模型声明。
+ * 从配置值里读一个通道当前的模型声明（规范键优先，旧键兜底）。
  * @param {unknown} models - 配置的 models 字典。
  * @param {string} channel - 通道名。
  * @returns {{ id: string, label?: string } | undefined} 声明。
  */
 export function modelOf(models, channel) {
-  return readModelEntry(models, channel) ?? readModelEntry(models, `${channel}/default`)
+  return readModelEntry(models, modelPath(channel))
+    ?? readModelEntry(models, `${channel}/default`)
+    ?? readModelEntry(models, legacyModelPath(channel))
 }
 
 function readModelEntry(models, key) {
@@ -147,6 +156,9 @@ function readModelEntry(models, key) {
 
 /**
  * 把 models 字典里的 `<通道>/<别名>` 条目读成别名行。
+ *
+ * `<通道>/model` 与 `<通道>/label` 是旧版卡片的实现细节键，不是别名；它们对应的
+ * 模型已经在通道行里显示，这里必须跳过，否则设置页会多出一条重名的假别名。
  * @param {unknown} models - 配置的 models 字典。
  * @returns {{ channel: string, alias: string, id: string, label?: string }[]} 别名行。
  */
@@ -157,6 +169,7 @@ export function modelAliasRows(models) {
     const [channel, ...rest] = String(key).split('/')
     const alias = rest.join('/')
     if (channel === '' || alias === '' || alias === 'default') continue
+    if (alias === MODEL_ID_SUFFIX || alias === MODEL_LABEL_SUFFIX) continue
     const spec = readModelEntry({ [key]: value }, key)
     if (spec === undefined) continue
     rows.push({ channel, alias, ...spec })
@@ -208,13 +221,19 @@ function segments(path) {
   return path.split('.')
 }
 
-/** models 字典的键：`<通道>/model` 与 `<通道>/label`。 */
-function modelKey(channel, suffix) {
-  return `${channel}/${suffix}`
+/** 模型行的规范键：`models.<通道>`（与 Host 的 defaultModelFor 读法一致）。 */
+function modelPath(channel) {
+  return channel
+}
+
+/** 旧版卡片写下的遗留键：`models.<通道>/model`，仅用于读取与迁移。 */
+function legacyModelPath(channel) {
+  return `${channel}/${MODEL_ID_SUFFIX}`
 }
 
 /**
- * 某个通道的默认模型是否在用户层被覆盖过（`<通道>/model` 或 `<通道>/default`）。
+ * 某个通道的默认模型是否在用户层被覆盖过（规范键 `<通道>`、`<通道>/default`，
+ * 或 0.3.1 写下的遗留键 `<通道>/model`）。
  * @param {object} snapshot - ConfigForm 快照。
  * @param {string} channel - 通道名。
  * @returns {boolean} 是否被覆盖。
@@ -224,16 +243,20 @@ export function modelOverridePresent(snapshot, channel) {
   if (typeof user !== 'object' || user === null) return false
   const models = user.models
   if (typeof models !== 'object' || models === null || Array.isArray(models)) return false
-  return models[modelKey(channel, MODEL_ID_SUFFIX)] !== undefined || models[channel] !== undefined
+  return models[modelPath(channel)] !== undefined
+    || models[`${channel}/default`] !== undefined
+    || models[legacyModelPath(channel)] !== undefined
 }
 
 /**
  * 把草稿翻译成 Host 写操作序列。
  *
  * 规则（逐字段）：
- *   - 非空草稿 → set 到该路径（models 子键用 `<通道>/model` / `<通道>/label`）；
+ *   - 非空草稿 → set 到该路径（模型行写规范的 `models.<通道>`）；
  *   - 空草稿 + 曾覆盖 → unset 该路径；
  *   - 空草稿 + 未曾覆盖 → 什么都不做（保持继承值）。
+ * 模型行额外做一次迁移：写入规范键时顺手清掉 0.3.1 的遗留键 `<通道>/model`
+ * 与 `<通道>/label`，保证「在设置页填过的模型」真正生效。
  * customProviders 是整块替换：非空 set 对象，空 + 覆盖 unset，空 + 未覆盖不写。
  * @param {object} snapshot - ConfigForm 快照（提供 user 层用于判断覆盖）。
  * @param {Record<string, string>} drafts - 表单草稿。
@@ -254,15 +277,24 @@ export function buildSaveOps(snapshot, drafts) {
     else if (isOverridden(snapshot, field.path)) ops.push({ op: 'unset', path: segments(field.path) })
   }
 
-  for (const channel of BUILTIN_CHANNELS) {
-    const draft = drafts[`models.${channel}`].trim()
+  for (const channel of modelRowChannels(snapshot, drafts)) {
+    // 自定义通道是动态出现的，草稿里可能还没有它的键（用户刚在 JSON 里声明），
+    // 这时按「留空」处理，不能在这里抛。
+    const draft = (drafts[`models.${channel}`] ?? '').trim()
     // 注意：models 的键本身就含 `/`（`<通道>/<别名>`），必须作为**单个键**写在
-    // `models` 之下，不能按点分路径拆段。
-    if (draft !== '') ops.push({ op: 'set', path: ['models', modelKey(channel, MODEL_ID_SUFFIX)], value: draft })
-    else if (modelOverridePresent(snapshot, channel)) {
-      // 清掉这个通道的默认模型：id 与展示名一起撤。
-      ops.push({ op: 'unset', path: ['models', modelKey(channel, MODEL_ID_SUFFIX)] })
-      ops.push({ op: 'unset', path: ['models', modelKey(channel, MODEL_LABEL_SUFFIX)] })
+    // `models` 之下，不能按点分路径拆段。规范键是纯通道名 `models.<通道>`。
+    if (draft !== '') {
+      ops.push({ op: 'set', path: ['models', modelPath(channel)], value: draft })
+      // 迁移：把 0.3.1 写下的遗留键清掉，否则旧值会继续盖住新值。
+      if (legacyOverridePresent(snapshot, channel)) {
+        ops.push({ op: 'unset', path: ['models', legacyModelPath(channel)] })
+        ops.push({ op: 'unset', path: ['models', `${channel}/${MODEL_LABEL_SUFFIX}`] })
+      }
+    } else if (modelOverridePresent(snapshot, channel)) {
+      // 清掉这个通道的默认模型：规范键与遗留键一起撤。
+      ops.push({ op: 'unset', path: ['models', modelPath(channel)] })
+      ops.push({ op: 'unset', path: ['models', legacyModelPath(channel)] })
+      ops.push({ op: 'unset', path: ['models', `${channel}/${MODEL_LABEL_SUFFIX}`] })
     }
   }
 
@@ -280,4 +312,36 @@ export function buildSaveOps(snapshot, drafts) {
   }
 
   return { ops }
+}
+
+/** 模型行覆盖的通道：内置两家 + 设置页当前列出的自定义通道（草稿优先）。 */
+function modelRowChannels(snapshot, drafts) {
+  const channels = [...BUILTIN_CHANNELS]
+  for (const channel of customChannelNamesFrom(snapshot, drafts)) {
+    if (!channels.includes(channel)) channels.push(channel)
+  }
+  return channels
+}
+
+/** 自定义通道名（草稿里的 customProviders JSON 优先，解析失败时回落到快照）。 */
+function customChannelNamesFrom(snapshot, drafts) {
+  const raw = typeof drafts.customProviders === 'string' ? drafts.customProviders.trim() : ''
+  if (raw !== '') {
+    try {
+      const parsed = JSON.parse(raw)
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) return Object.keys(parsed)
+    } catch {
+      // 草稿不合法时交给 buildSaveOps 的校验报错，这里不重复处理。
+    }
+  }
+  return customChannelNames(snapshot)
+}
+
+/** 用户层是否存在遗留键 `models.<通道>/model`。 */
+function legacyOverridePresent(snapshot, channel) {
+  const user = snapshot.user
+  if (typeof user !== 'object' || user === null) return false
+  const models = user.models
+  if (typeof models !== 'object' || models === null || Array.isArray(models)) return false
+  return models[legacyModelPath(channel)] !== undefined
 }

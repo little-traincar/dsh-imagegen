@@ -186,6 +186,39 @@ check('内置通道也能被 model 覆盖',
   providerOverride.provider === 'qwen' && providerOverride.model === 'qwen-max-lite',
   `${providerOverride.provider}/${providerOverride.model}`)
 
+// —— 4c) 回归：0.3.1 的遗留键 `<通道>/model` ——
+// 缺陷背景：旧卡片把「模型」输入框的值写到 models['<通道>/model']，而 Host 与卡片
+// 自己都只读 models['<通道>']，导致设置页填的模型永远不生效。修复后：读取期仍兼容
+// 遗留键（老配置不会突然掉回内置默认），但不再把它当别名暴露给工具入参。
+registrations.length = 0
+host.apply(fakeCtx, {
+  ...baseConfig,
+  apiKeys: { qwen: 'sk-qwen' },
+  models: { 'qwen/model': 'qwen-legacy-lite', 'qwen/flash': 'qwen-flash' },
+})
+const legacyTool = registrations[0]
+const legacyResult = await legacyTool.execute({ prompt: '遗留键兼容测试', provider: 'qwen' }, { signal: undefined })
+check('遗留键 models[qwen/model] 仍被读作默认模型',
+  legacyResult.model === 'qwen-legacy-lite', legacyResult.model)
+const legacyAlias = await legacyTool.execute({ prompt: '遗留键不当别名', provider: 'qwen', model: 'model' }, { signal: undefined })
+check('保留后缀 model 不再作为别名解析',
+  legacyAlias.model === 'model', legacyAlias.model)
+const realAlias = await legacyTool.execute({ prompt: '真别名仍可用', provider: 'qwen', model: 'flash' }, { signal: undefined })
+check('普通别名仍然可用', realAlias.model === 'qwen-flash', realAlias.model)
+
+// —— 4d) 回归：规范键与别名行并存 ——
+registrations.length = 0
+host.apply(fakeCtx, {
+  ...baseConfig,
+  apiKeys: { qwen: 'sk-qwen' },
+  models: { qwen: 'qwen-lite', 'qwen/flash': 'qwen-flash' },
+})
+const cleanTool = registrations[0]
+const cleanResult = await cleanTool.execute({ prompt: '规范键测试', provider: 'qwen' }, { signal: undefined })
+check('规范键 models[qwen] 生效', cleanResult.model === 'qwen-lite', cleanResult.model)
+const cleanAlias = await cleanTool.execute({ prompt: '规范键 + 别名', provider: 'qwen', model: 'flash' }, { signal: undefined })
+check('规范键存在时别名仍解析', cleanAlias.model === 'qwen-flash', cleanAlias.model)
+
 // —— 5) 本地通道：二进制直出 + 免鉴权 + 可关 watermark ——
 registrations.length = 0
 host.apply(fakeCtx, {
@@ -325,13 +358,50 @@ const opsSet = buildSaveOps(snapshot, {
 }).ops
 check('非空草稿 → set 嵌套路径',
   opsSet.some((op) => op.op === 'set' && op.path.join('.') === 'apiKeys.doubao' && op.value === 'ark-1'), JSON.stringify(opsSet))
-check('模型行写到 <通道>/model',
-  opsSet.some((op) => op.op === 'set' && op.path.join('.') === 'models.qwen/model' && op.value === 'qwen-lite'), JSON.stringify(opsSet))
+check('模型行写到「models.<通道>」规范键',
+  opsSet.some((op) => op.op === 'set' && op.path.join('.') === 'models.qwen' && op.value === 'qwen-lite'), JSON.stringify(opsSet))
 check('customProviders 解析成对象',
   opsSet.some((op) => op.op === 'set' && op.path.join('.') === 'customProviders' && op.value.local?.model === 'flux'), JSON.stringify(opsSet))
 
 const badOps = buildSaveOps(snapshot, { ...blankDrafts, customProviders: '{ 不是 JSON' })
 check('非法 customProviders JSON 被拦下', badOps.error !== undefined && badOps.ops.length === 0, String(badOps.error))
+
+// —— 10) 回归：模型键的旧写法兼容与迁移（0.3.1 写入 / 读取键不一致） ——
+const legacySnapshot = {
+  ...snapshot,
+  user: { ...(snapshot.user ?? {}), models: { 'doubao/model': 'legacy-doubao-id', 'doubao/label': '旧展示名' } },
+}
+const legacyOps = buildSaveOps(legacySnapshot, { ...blankDrafts, 'models.doubao': 'doubao-new-id' }).ops
+check('写规范键时顺手清掉遗留 <通道>/model',
+  legacyOps.some((op) => op.op === 'unset' && op.path.join('.') === 'models.doubao/model'), JSON.stringify(legacyOps))
+check('清遗留键时连带清掉 <通道>/label',
+  legacyOps.some((op) => op.op === 'unset' && op.path.join('.') === 'models.doubao/label'), JSON.stringify(legacyOps))
+check('规范键写入不被遗留清理破坏',
+  legacyOps.some((op) => op.op === 'set' && op.path.join('.') === 'models.doubao' && op.value === 'doubao-new-id'),
+  JSON.stringify(legacyOps))
+
+const legacyBlankOps = buildSaveOps(legacySnapshot, { ...blankDrafts }).ops
+check('留空 + 仅有遗留键 → 撤掉遗留覆盖',
+  legacyBlankOps.some((op) => op.op === 'unset' && op.path.join('.') === 'models.doubao/model'),
+  JSON.stringify(legacyBlankOps))
+
+check('卡片行能读到遗留键的模型 id（老配置不回落到默认）',
+  clientExports.modelOf({ 'doubao/model': 'legacy-doubao-id' }, 'doubao')?.id === 'legacy-doubao-id',
+  JSON.stringify(clientExports.modelOf({ 'doubao/model': 'legacy-doubao-id' }, 'doubao')))
+check('遗留键不再被当成别名行展示',
+  clientExports.modelAliasRows({ 'doubao/model': 'legacy-doubao-id', 'relay/gpt-image': { id: 'gpt-image-1' } }).length === 1,
+  JSON.stringify(clientExports.modelAliasRows({ 'doubao/model': 'x', 'relay/gpt-image': { id: 'gpt-image-1' } })))
+
+const legacyPresent = { ...snapshot, user: { models: { 'qwen/model': 'old-qwen' } } }
+check('modelOverridePresent 认遗留键',
+  clientExports.modelOverridePresent(legacyPresent, 'qwen') === true,
+  String(clientExports.modelOverridePresent(legacyPresent, 'qwen')))
+check('modelOverridePresent 认规范键',
+  clientExports.modelOverridePresent({ ...snapshot, user: { models: { qwen: 'new-qwen' } } }, 'qwen') === true,
+  '')
+check('未覆盖时 modelOverridePresent 为 false',
+  clientExports.modelOverridePresent(snapshot, 'qwen') === false,
+  '')
 
 console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILURE(S)`}`)
 process.exitCode = failures === 0 ? 0 : 1

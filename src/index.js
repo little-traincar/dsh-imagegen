@@ -53,6 +53,13 @@ export { PLUGIN_NAME as name, PLUGIN_INJECT as inject }
 /** 设置命名空间 = profile 里的 entry id；客户端卡片按同一名字读写。 */
 export const IMAGEGEN_SETTINGS_NS = 'imagegen'
 
+/**
+ * 模型单元格的保留后缀：`<通道>/model` 与 `<通道>/label` 是 0.3.1 卡片写下的
+ * 遗留键（写入键与读取键不一致的实现缺陷）。内置通道不再把它们当别名暴露，
+ * 只在读取默认模型时兜底识别一次。
+ */
+const LEGACY_MODEL_SUFFIXES = ['model', 'label']
+
 /** 入参边界（超过即拒绝并给出明确提示，而不是让远端 API 去试错）。 */
 const LIMITS = {
   prompt: 4000,
@@ -197,29 +204,42 @@ function modelEntries(models) {
 
 /**
  * 某通道的默认模型 id（未配置时返回 undefined，由调用方回落内置快照 id）。
+ *
+ * 读法（按优先级）：
+ *   1. `models.<通道>` —— 规范键，设置页模型行写的就是它；
+ *   2. `models.<通道>/default` —— 等价写法；
+ *   3. `models.<通道>/model` —— 0.3.1 卡片写下的遗留键，读取期兜底一次，
+ *      下次在设置页保存会被迁移成规范键（见客户端 buildSaveOps）。
  * @param {string} name - 通道名。
  * @param {Map<string, { id: string }>} table - models 查找表。
  * @returns {string | undefined} 模型 id。
  */
 function defaultModelFor(name, table) {
   const key = name.toLowerCase()
-  return table.get(key)?.id ?? table.get(`${key}/default`)?.id
+  return table.get(key)?.id
+    ?? table.get(`${key}/default`)?.id
+    ?? table.get(`${key}/model`)?.id
 }
 
 /**
  * 某通道可被别名引用的模型（models 里 `<通道>/<别名>` 形式的条目）。
+ *
+ * `model` / `label` 是 0.3.1 卡片遗留的模型单元格键，对内置通道必须排除：
+ * 否则历史配置会额外冒出一个名为 `model` 的假别名。自定义通道不受影响。
  * @param {string} name - 通道名。
  * @param {Map<string, { id: string, label?: string }>} table - models 查找表。
  * @returns {{ alias: string, id: string, label?: string }[]} 候选模型。
  */
 function modelOptionsFor(name, table) {
   const key = name.toLowerCase()
+  const reservedAliases = BUILTIN_PROVIDERS.includes(key) ? LEGACY_MODEL_SUFFIXES : []
   const options = []
   for (const [entryKey, spec] of table) {
     const [channel, ...rest] = entryKey.split('/')
     if (channel !== key) continue
     const alias = rest.join('/')
     if (alias === '' || alias === 'default') continue
+    if (reservedAliases.includes(alias)) continue
     options.push({ alias, ...spec })
   }
   return options
@@ -406,7 +426,9 @@ export function apply(ctx, config) {
       const configured = defaultModelFor(builtin, models)
       rows.set(builtin, builtinRow(builtin, {
         endpoint: cfg.baseUrls?.[builtin],
-        model: configured ?? (typeof cfg.models?.[builtin] === 'string' ? cfg.models[builtin] : undefined),
+        // 规范键 `models.<通道>` 也覆盖字符串写法（modelSpec 已归一化），
+        // 这里不再重复读 cfg.models[builtin]，避免出现第二条读法不一致的路径。
+        model: configured,
         apiKey: cfg.apiKeys?.[builtin],
       }))
     }

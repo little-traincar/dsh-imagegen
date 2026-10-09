@@ -102,7 +102,7 @@ dsh plugin --profile desktop add ./little-traincar-dsh-imagegen-0.3.1.tgz
 
 每个通道用哪个模型都可以改，三个入口：
 
-1. **设置 → imagegen → 模型** —— 每个通道一行「模型 id」。留空并保存 = 清除覆盖、回到内置默认。
+1. **设置 → imagegen → 模型** —— 每个通道一行「模型 id」。留空并保存 = 清除覆盖、回到内置默认。这一行写的是规范的 `models.<通道>` 键，保存后立刻对下一次生图生效。
 2. **模型明细**（或直接写 `cordis.patch.yml`）—— 整块写法，可带别名：
 
 ```json
@@ -118,6 +118,8 @@ dsh plugin --profile desktop add ./little-traincar-dsh-imagegen-0.3.1.tgz
 ```
 generate_image(prompt="…", provider="relay", model="gpt-image")
 ```
+
+默认模型也可以写成 `<通道>/default`（与 `<通道>` 等价）。`<通道>/model` 与 `<通道>/label` 是 0.3.1 设置页写下过的历史键，读取时仍兼容，但保存设置页时会自动迁移成 `<通道>`；内置通道不再把这两个后缀当别名暴露。
 
 其他 `model` 值一律按字面当作模型 id 透传。调用结果里会回显实际使用的 `provider` 与 `model`。
 

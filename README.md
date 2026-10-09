@@ -102,7 +102,7 @@ Any OpenAI-style `POST <baseUrl>/images/generations` works. Declare it in the **
 
 Each channel's model id is editable, in three places:
 
-1. **Settings → imagegen → Models** — one model-id field per channel. Saving it empty clears the override and restores the built-in default.
+1. **Settings → imagegen → Models** — one model-id field per channel. Saving it empty clears the override and restores the built-in default. The field writes the canonical `models.<channel>` key, which takes effect on the next generation call.
 2. **Model details** (or `cordis.patch.yml`) — the whole map at once, with optional aliases:
 
 ```json
@@ -118,6 +118,8 @@ A key is either `<channel>` (that channel's default model) or `<channel>/<alias>
 ```
 generate_image(prompt="…", provider="relay", model="gpt-image")
 ```
+
+The default model may also be written as `<channel>/default` (equivalent to `<channel>`). `<channel>/model` and `<channel>/label` are historical keys written by the 0.3.1 settings card: they are still read, and saving the settings card migrates them to `<channel>`; built-in channels no longer expose those suffixes as aliases.
 
 Any other `model` value is passed through verbatim as a model id. The result reports the `provider` and `model` actually used.
 

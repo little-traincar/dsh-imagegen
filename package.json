@@ -52,6 +52,6 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "smoke": "node scripts/smoke.mjs && node scripts/smoke-local.mjs"
+    "smoke": "node scripts/smoke.mjs && node scripts/smoke-local.mjs && node scripts/regression-model-keys.mjs"
   }
 }

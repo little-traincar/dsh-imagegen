@@ -71,7 +71,7 @@ const ndjson = await startServer('ndjson', (res) => {
 const outDir = await mkdtemp(join(tmpdir(), 'imagegen-local-'))
 
 /** 用给定 provider 配置跑一次 generate_image。 */
-const generate = async (customProviders, defaultProvider = 'local', args = {}) => {
+const generate = async (customProviders, defaultProvider = 'local', args = {}, modelsOverride = {}) => {
   let tool
   const ctx = {
     inject(names, callback) {
@@ -83,7 +83,7 @@ const generate = async (customProviders, defaultProvider = 'local', args = {}) =
     defaultProvider,
     apiKeys: {},
     baseUrls: {},
-    models: {},
+    models: modelsOverride,
     customProviders,
     outDir,
     attachToConversation: false,
@@ -160,6 +160,22 @@ try {
   const authRequest = requests.find((entry) => entry.name === 'auth')
   check('自定义鉴权头生效', authRequest.headers['x-api-key'] === 'secret-token', JSON.stringify(authRequest.headers))
   check('自定义鉴权方案为空时不加前缀', authRequest.headers.authorization === undefined)
+
+  // —— 6) 回归：历史遗留键 `<通道>/model` 与规范键 `models.<通道>` ——
+  // 老配置（0.3.1 设置页写下的键）必须继续生效；规范键存在时优先级更高。
+  const legacyModels = await generate({
+    local: { baseUrl: binary.url, model: 'flux-local', apiKeyOptional: true, sendWatermark: false },
+  }, 'local', {}, { 'local/model': 'flux-legacy' })
+  check('遗留键 models[通道/model] 仍能改变实际请求模型',
+    legacyModels.model === 'flux-legacy', legacyModels.model)
+  const legacyRequest = requests.filter((entry) => entry.name === 'binary').at(-1)
+  check('遗留键生效时请求体不带内置模型',
+    legacyRequest.body.model === 'flux-legacy', legacyRequest.body.model)
+
+  const canonicalModels = await generate({
+    local: { baseUrl: binary.url, model: 'flux-local', apiKeyOptional: true, sendWatermark: false },
+  }, 'local', {}, { local: 'flux-canonical', 'local/model': 'flux-legacy' })
+  check('规范键优先于遗留键', canonicalModels.model === 'flux-canonical', canonicalModels.model)
 
   await multi.close()
   await authServer.close()

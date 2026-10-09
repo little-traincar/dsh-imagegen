@@ -188,6 +188,25 @@ export function ImagegenCard(props) {
       h('p', { style: cardStyles.hint }, t(copy.hint)))
   }
 
+  /**
+   * 设置页要列出的自定义通道名：草稿里的 customProviders JSON 优先（用户刚加上的
+   * 通道应该立刻出现模型行），解析失败或为空时回落到已保存的快照。
+   */
+  const draftCustomNames = () => {
+    const raw = (drafts.customProviders ?? '').trim()
+    if (raw !== '') {
+      try {
+        const parsed = JSON.parse(raw)
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) return Object.keys(parsed)
+      } catch {
+        // 草稿 JSON 非法：交给保存时的校验提示，这里退回快照。
+      }
+    }
+    return customChannelNames(snapshot)
+  }
+
+  const customNames = draftCustomNames()
+
   /** 一个通道的模型行：模型 id 可自由填写。 */
   const modelField = (channel) => {
     const configured = modelOf(currentModels, channel)
@@ -217,7 +236,6 @@ export function ImagegenCard(props) {
   }
 
   const aliases = modelAliasRows(currentModels)
-  const customNames = customChannelNames(snapshot)
 
   const onSave = async () => {
     const built = buildSaveOps(snapshot, { ...drafts, models: modelsDraft })

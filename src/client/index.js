@@ -9,7 +9,7 @@
 
 import { ImagegenCard } from './ImagegenCard.js'
 import { GenerateImageToolview } from './imagegen-toolview.js'
-import { buildSaveOps, IMAGEGEN_NS } from './imagegen-card-core.js'
+import { buildSaveOps, modelAliasRows, modelOf, modelOverridePresent, IMAGEGEN_NS } from './imagegen-card-core.js'
 import * as copy from './locales.js'
 
 /** 本卡片文案字典的命名空间。 */
@@ -75,5 +75,5 @@ export function apply(ctx) {
   }, GenerateImageToolview))
 }
 
-/** 供自检断言：卡片保存路径能被独立复算出来。 */
-export { buildSaveOps }
+/** 供自检断言：卡片保存路径与模型键读法能被独立复算出来。 */
+export { buildSaveOps, modelAliasRows, modelOf, modelOverridePresent }
