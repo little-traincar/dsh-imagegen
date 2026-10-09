@@ -1,20 +1,5 @@
-// imagegen-toolview.js —— web 会话里 generate_image 调用/结果的专属行。
-//
-// 背景：会话里工具结果默认走通用行，image 内容块会被压成 JSON 文本；只有注册了
-// keyed toolview（槽 tool.call.toolview，key = 工具名）的工具才有自己的行。本行仿
-// ui-tool 的 read-image-row：从 settled 结果里提取 [text envelope, image...] 内容块
-// 的附件引用，用 owner 提供的会话授权 loadImage 拉 URL 内联展示。
-//
-// 不声明子槽（官方 tool.call.images 只能被一个入口声明，已被 read_image 占用）。
-// 纯 React + 内联样式，bundle 零外部依赖（除 react）。
-
 import { createElement as h, useEffect, useState } from 'react'
 
-/**
- * 从结果内容块里抽 [text…] 与带附件的 image 块（与 output.render 产出形状对应）。
- * @param {unknown} content - 工具结果的 content 块数组。
- * @returns {{ text: string, images: object[] }} 文本与图片引用。
- */
 function parseResult(content) {
   const text = []
   const images = []
@@ -30,7 +15,6 @@ function parseResult(content) {
   return { text: text.join('\n'), images }
 }
 
-/** 会话行样式表。 */
 const viewStyles = {
   card: {
     border: '0.5px solid var(--dsw-alias-border-l3, rgba(128,128,128,.35))',
@@ -51,7 +35,6 @@ const viewStyles = {
   error: { color: 'var(--dsw-alias-label-danger, #d03050)' },
 }
 
-/** 单张图：peek 同步命中直接显示，否则异步 loadImage 拉 URL。 */
 function GalleryImage(props) {
   const imageRef = props.imageRef
   const loader = props.loader
@@ -67,7 +50,7 @@ function GalleryImage(props) {
       () => { if (!stale) setFailed(true) },
     )
     return () => { stale = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [imageRef.attachmentId])
 
   if (failed) return h('p', { style: viewStyles.placeholder }, '图片加载失败（附件可能已过期）')
@@ -79,15 +62,9 @@ function GalleryImage(props) {
   })
 }
 
-/**
- * generate_image 会话行：运行中显示轻量摘要；settled 结果展开画廊 + 元信息；
- * 错误与无图结果回退到文本。
- * @param {object} props - keyed toolview 的 owner 运行时 share（toolName/block/loadImage…）。
- * @returns {object} 会话行元素。
- */
 export function GenerateImageToolview(props) {
   const block = props.block
-  // RunningToolCall（无 kind）与 ToolResultNode（kind='tool-result'）的判别。
+
   const settled = block?.kind === 'tool-result' ? block : undefined
 
   if (settled === undefined) {

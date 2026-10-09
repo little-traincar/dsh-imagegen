@@ -1,5 +1,3 @@
-// 设置卡片文案字典（zh/en），命名空间 settings.imagegen。
-
 export const zh = {
   title: 'imagegen',
   description: '内置豆包 Seedream 与阿里 qwen-image；每个通道用哪个模型由你自由填写，本地部署或中转站模型写进下面的“自定义通道”，保存后对下一次生图调用即时生效。',

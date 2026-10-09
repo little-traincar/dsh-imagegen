@@ -1,18 +1,3 @@
-// ImagegenCard.js —— 「设置 → imagegen」卡片。
-//
-// 独立外观（不导入其它插件的卡片组件，遵守客户端 bundle 纯净度门禁）：
-// 用 ConfigForm 快照播种草稿，保存时把所有变更一次写回（非空 set、
-// 空串+曾覆盖 unset）。样式全部内联，无 CSS 管道。
-//
-// 与上游 0.1.x 版本的差异：
-//   - 不再走 ctx.settingsScope，改为 ctx.configForms.get('imagegen') 的
-//     getSnapshot / mutate（见 imagegen-card-core.js 顶部说明）。
-//   - 新增「模型」编辑行：每个通道的模型 id 都能自由填写（含自定义通道与别名）。
-//   - models 明细用整块 JSON 文本域兜底，支持别名与多模型声明。
-//
-// 注入面契约（scoped-slots bindInjectSources）：面里 hooks 分栏的每个成员由渲染
-// 机制绑定成 use<Name> 选择器钩子，其它成员原样透传为 props。
-
 import { createElement as h, useEffect, useRef, useState } from 'react'
 import {
   BUILTIN_CHANNELS,
@@ -31,7 +16,6 @@ import {
   modelOf,
 } from './imagegen-card-core.js'
 
-/** 卡片样式表。 */
 const cardStyles = {
   card: {
     border: '0.5px solid var(--dsw-alias-border-l3, rgba(128,128,128,.35))',
@@ -105,7 +89,6 @@ const cardStyles = {
   divider: { height: 1, background: 'var(--dsw-alias-border-l2, rgba(128,128,128,.2))', margin: '2px 0' },
 }
 
-/** 一个字段编辑行的文案键集合（字段顺序即渲染顺序）。 */
 const FIELD_COPY = {
   'apiKeys.doubao': { label: 'keyDoubao', hint: 'keyDoubaoHint' },
   'apiKeys.qwen': { label: 'keyQwen', hint: 'keyQwenHint' },
@@ -113,15 +96,13 @@ const FIELD_COPY = {
   'baseUrls.qwen': { label: 'urlQwen', hint: 'urlQwenHint' },
 }
 
-/** 自定义通道文本域的 DOM id。 */
 const CUSTOM_FIELD_ID = 'imagegen-customProviders'
-/** models 明细文本域的 DOM id。 */
+
 const MODELS_FIELD_ID = 'imagegen-models'
 
-/** 渲染生图 API 设置卡片。 */
 export function ImagegenCard(props) {
   const { t } = props
-  // useImagegenCard 是渲染机制从注入面 hooks 绑定的选择器钩子（订阅已内置）。
+
   const snapshot = props.useImagegenCard((value) => value)
 
   const [drafts, setDrafts] = useState(emptyDrafts)
@@ -131,7 +112,6 @@ export function ImagegenCard(props) {
   const [errorText, setErrorText] = useState('')
   const seeded = useRef(undefined)
 
-  // 快照 revision 变化（首次就绪或别处写入）时重新播种：草稿归零、明细文本跟随刷新。
   const revision = snapshot.revision
   useEffect(() => {
     if (snapshot.status !== 'ready' || revision === undefined) return
@@ -141,7 +121,7 @@ export function ImagegenCard(props) {
     setModelsDraft('')
     setResult('')
     setErrorText('')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [snapshot.status, revision])
 
   if (snapshot.status === 'loading') {
@@ -163,7 +143,7 @@ export function ImagegenCard(props) {
     const configured = secret && isConfigured(snapshot, path)
     const overridden = isOverridden(snapshot, path)
     const text = draftOf(path)
-    // secret 行永远渲染草稿文本（快照里是脱敏值，回显无意义）；普通字段在草稿为空时回显解析值。
+
     const resolved = draftFromSnapshot(snapshot, path)
     const shown = secret ? text : (text !== '' || resolved === '' ? text : resolved)
     const badge = secret
@@ -188,10 +168,6 @@ export function ImagegenCard(props) {
       h('p', { style: cardStyles.hint }, t(copy.hint)))
   }
 
-  /**
-   * 设置页要列出的自定义通道名：草稿里的 customProviders JSON 优先（用户刚加上的
-   * 通道应该立刻出现模型行），解析失败或为空时回落到已保存的快照。
-   */
   const draftCustomNames = () => {
     const raw = (drafts.customProviders ?? '').trim()
     if (raw !== '') {
@@ -199,7 +175,7 @@ export function ImagegenCard(props) {
         const parsed = JSON.parse(raw)
         if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) return Object.keys(parsed)
       } catch {
-        // 草稿 JSON 非法：交给保存时的校验提示，这里退回快照。
+
       }
     }
     return customChannelNames(snapshot)
@@ -207,7 +183,6 @@ export function ImagegenCard(props) {
 
   const customNames = draftCustomNames()
 
-  /** 一个通道的模型行：模型 id 可自由填写。 */
   const modelField = (channel) => {
     const configured = modelOf(currentModels, channel)
     const text = draftOf(`models.${channel}`)
@@ -352,7 +327,6 @@ export function ImagegenCard(props) {
       }, busy ? t('saving') : t('save'))))
 }
 
-/** 供自检断言：卡片渲染引用的文案键必须都在字典里。 */
 export const CARD_COPY_KEYS = [
   'title', 'description', 'loading', 'unavailable', 'modelsTitle', 'modelsDescription',
   'modelLabel', 'modelHint', 'modelDefaultHint', 'modelPlaceholder', 'customBadge', 'aliasesLabel',

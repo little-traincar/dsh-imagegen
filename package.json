@@ -1,6 +1,6 @@
 {
   "name": "@little-traincar/dsh-imagegen",
-  "version": "0.3.1",
+  "version": "0.3.3",
   "description": "Image generation tool for DeepSeek Harness 0.2.x — provider-table driven (Doubao Seedream / Aliyun qwen / any OpenAI-compatible gateway / local deployments), user-configurable model per channel, watermark-free, inline in-chat display.",
   "license": "MIT",
   "publishConfig": {

@@ -1,24 +1,3 @@
-/**
- * imagegen —— DSH 生图工具插件（宿主半侧）。
- *
- * 目标宿主：DSH 0.2.x（本文件按 dsh-v0.2.0-rc.2 的真实 API 编写）。
- * 与上游 0.1.x 版本的差异：
- *   - 上游用 `settings.installSection(...)`（0.1.2–0.1.6 的命名空间 API），该 API 在
- *     0.1.7+ 已被移除。本版本改为官方现行形态：静态 `Config`（字段级 `.volatile()`）
- *     + `ctx.get('configEditor').edit(...)` 落 profile；读经 apply 入参的 volatile 引用。
- *   - 工具入参新增 `model`：单次调用可临时指定模型，不必改配置。
- *   - 通道（provider）是开放表：内置 doubao / qwen，其余走 `customProviders`；
- *     每个通道的模型 id 由 `models` 自由填写。
- *
- * 运行时只依赖宿主已经提供的服务（tools / attachments / webServer / settings），
- * 缺服务一律干净降级，不在 apply 里抛错。
- *
- * 防御性工程：
- *   - 所有入参做边界校验（长度/数量/枚举/范围），错误信息可读且不含密钥。
- *   - 并发生成用 allSettled：部分失败保留成功图并逐条标注，全部失败才报错。
- *   - 路由只读、单段文件名白名单（杜绝路径穿越）、nosniff、no-store、HEAD 支持。
- *   - 超时与 exec.signal 合并（AbortSignal.any），取消即停止等待。
- */
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join } from 'node:path'
@@ -35,32 +14,20 @@ import {
   unknownProviderError,
 } from './providers.js'
 
-// 可测试面：这两个纯函数是自检脚本与诊断入口直接调用的部分，显式对外导出。
-// 注意：必须先落到本地名字再 export —— 打包器的公共导出块只接受本地标识符，
-// 直接把「相对导入得到的绑定」写进 export 会生成非法的 `export { ns.member }`。
 const exportNormalizeCustomProviders = normalizeCustomProviders
 const exportNormalizeEndpoint = normalizeEndpoint
 export { exportNormalizeCustomProviders as normalizeCustomProviders, exportNormalizeEndpoint as normalizeEndpoint }
 
-/** 插件名。刻意不叫 name：打包器给顶层标识符加模块前缀，与对象字面量键同名会互相污染。 */
 const PLUGIN_NAME = 'imagegen'
 
-/** 工具注册表服务需在 apply 顶层可见。 */
 const PLUGIN_INJECT = ['tools']
 
 export { PLUGIN_NAME as name, PLUGIN_INJECT as inject }
 
-/** 设置命名空间 = profile 里的 entry id；客户端卡片按同一名字读写。 */
 export const IMAGEGEN_SETTINGS_NS = 'imagegen'
 
-/**
- * 模型单元格的保留后缀：`<通道>/model` 与 `<通道>/label` 是 0.3.1 卡片写下的
- * 遗留键（写入键与读取键不一致的实现缺陷）。内置通道不再把它们当别名暴露，
- * 只在读取默认模型时兜底识别一次。
- */
 const LEGACY_MODEL_SUFFIXES = ['model', 'label']
 
-/** 入参边界（超过即拒绝并给出明确提示，而不是让远端 API 去试错）。 */
 const LIMITS = {
   prompt: 4000,
   textLines: 20,
@@ -70,61 +37,45 @@ const LIMITS = {
   model: 200,
   seedMin: 0,
   seedMax: 2_147_483_647,
-  /** 参考图：本地文件读取上限。 */
+
   imageFileBytes: 10 * 1024 * 1024,
-  /** 参考图：base64 data URI 长度上限。 */
+
   imageDataUri: 15 * 1024 * 1024,
 }
 
-/**
- * 插件配置。每个字段都 `.volatile()`：改动经 configEditor 落 profile 后由 Loader
- * 原地热更，不重启进程；工具每次调用现读（见 apply 里的 imagegenConfig）。
- *
- * 兼容性说明：`.volatile()` 由 schemastery 3.18.3 引入，DSH 0.2.x 提供的是 ~3.18.4。
- * 若宿主自带的是更老的 schemastery（0.1.x 那代是 3.18.2），这里不抛错、只是不加
- * volatile —— 此时插件仍能加载与出图，但设置页（需要 volatile 字段）不可用。
- */
 const volatileFields = typeof Schema.object({}).volatile === 'function'
 
-/** 需要热更的字段包一层 volatile；老 schemastery 上原样返回。 */
 function live(field) {
   return volatileFields ? field.volatile() : field
 }
 
 export const Config = Schema.object({
-  /** 默认通道名。不收窄成 union：自定义通道名在运行期解析。 */
+
   defaultProvider: live(Schema.string().default('doubao')),
-  /** 每个通道的 API key，按通道名索引。 */
+
   apiKeys: live(Schema.dict(Schema.string().role('secret')).default({})),
-  /** 每个通道的 endpoint 覆盖（裸主机 / 以 /v1 结尾 / 完整地址都能吃）。 */
+
   baseUrls: live(Schema.dict(Schema.string()).default({})),
-  /**
-   * 每个通道使用的模型 id：自由填写。
-   * 值是字符串；也可以写 `{ id: '...', label: '...' }` 给个显示名。
-   * 键支持 `<通道>` 与 `<通道>/<别名>`（别名供工具入参 model 引用）。
-   */
+
   models: live(Schema.dict(Schema.any()).default({})),
-  /** 自定义通道声明（任意 OpenAI 风格 images/generations）。 */
+
   customProviders: live(Schema.dict(Schema.any()).default({})),
-  /** 落盘目录；空串 = 启动目录下的 generated-images。 */
+
   outDir: live(Schema.string().default('')),
-  /** 是否把生成的图片作为会话附件（影响对话内嵌显示）。 */
+
   attachToConversation: live(Schema.boolean().default(true)),
-  /** 默认张数。 */
+
   count: live(Schema.number().step(1).min(LIMITS.minCount).max(LIMITS.maxCount).default(LIMITS.minCount)),
-  /** 默认长宽比。 */
+
   aspect: live(Schema.union(['1:1', '2:3', '3:4', '9:16', '16:9']).default('2:3')),
-  /** 单次请求超时。 */
+
   requestTimeoutMs: live(Schema.number().default(300_000)),
 })
 
-/** qwen 专用质量负面提示词（豆包与多数本地模型不支持该参数）。 */
 const NEGATIVE_PROMPT = '低分辨率、模糊、畸变、肢体错误、多余手指、文字乱码或错字、水印、重复元素、低质量'
 
-/** 追加到提示词末尾的质量要求（豆包默认偏浅色 PPT 风，必须显式压风格与细节）。 */
 const QUALITY_SUFFIX = '\n画面要求：专业级商业设计，构图完整、光影自然、细节精致、色彩协调；风格与主色调以用户指定为准。'
 
-/** 内联路由支持的扩展名 → 响应 Content-Type。 */
 const INLINE_MIME = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -132,12 +83,6 @@ const INLINE_MIME = {
   '.webp': 'image/webp',
 }
 
-/**
- * 把用户文案逐字嵌入提示词，禁止模型/平台改写。
- * @param {string} description - 画面描述。
- * @param {string[] | undefined} textLines - 必须逐字出现的文字行。
- * @returns {string} 完整提示词。
- */
 function buildPrompt(description, textLines) {
   const parts = [description]
   if (textLines !== undefined && textLines.length > 0) {
@@ -149,15 +94,6 @@ function buildPrompt(description, textLines) {
   return parts.join('\n') + QUALITY_SUFFIX
 }
 
-/**
- * 读一个「可能是 volatile 引用」的配置字段。
- *
- * 为什么需要它：带 `Config` 导出的插件，apply 入参的 volatile 字段在部分组合形态下
- * 是 boxed ref（`{ get() }` 容器）而非裸值。两种形态都解。
- * @param {unknown} field - 配置字段（裸值或 ref）。
- * @param {unknown} fallback - 两者都取不到时的兜底。
- * @returns {unknown} 解箱后的值。
- */
 function unbox(field, fallback) {
   if (field === undefined || field === null) return fallback
   if (typeof field === 'object' && typeof field.get === 'function') {
@@ -167,11 +103,6 @@ function unbox(field, fallback) {
   return field
 }
 
-/**
- * 模型声明归一化：字符串，或 `{ id, label }`。
- * @param {unknown} value - models 字典里的一个条目。
- * @returns {{ id: string, label?: string } | undefined} 归一化后的声明。
- */
 function modelSpec(value) {
   if (typeof value === 'string') {
     const id = value.trim()
@@ -186,11 +117,6 @@ function modelSpec(value) {
   return undefined
 }
 
-/**
- * models 字典（`<通道>` 或 `<通道>/<别名>`）→ 小写键的查找表。
- * @param {unknown} models - 配置里的 models。
- * @returns {Map<string, { id: string, label?: string }>} 查找表。
- */
 function modelEntries(models) {
   const table = new Map()
   if (typeof models !== 'object' || models === null || Array.isArray(models)) return table
@@ -202,18 +128,6 @@ function modelEntries(models) {
   return table
 }
 
-/**
- * 某通道的默认模型 id（未配置时返回 undefined，由调用方回落内置快照 id）。
- *
- * 读法（按优先级）：
- *   1. `models.<通道>` —— 规范键，设置页模型行写的就是它；
- *   2. `models.<通道>/default` —— 等价写法；
- *   3. `models.<通道>/model` —— 0.3.1 卡片写下的遗留键，读取期兜底一次，
- *      下次在设置页保存会被迁移成规范键（见客户端 buildSaveOps）。
- * @param {string} name - 通道名。
- * @param {Map<string, { id: string }>} table - models 查找表。
- * @returns {string | undefined} 模型 id。
- */
 function defaultModelFor(name, table) {
   const key = name.toLowerCase()
   return table.get(key)?.id
@@ -221,15 +135,6 @@ function defaultModelFor(name, table) {
     ?? table.get(`${key}/model`)?.id
 }
 
-/**
- * 某通道可被别名引用的模型（models 里 `<通道>/<别名>` 形式的条目）。
- *
- * `model` / `label` 是 0.3.1 卡片遗留的模型单元格键，对内置通道必须排除：
- * 否则历史配置会额外冒出一个名为 `model` 的假别名。自定义通道不受影响。
- * @param {string} name - 通道名。
- * @param {Map<string, { id: string, label?: string }>} table - models 查找表。
- * @returns {{ alias: string, id: string, label?: string }[]} 候选模型。
- */
 function modelOptionsFor(name, table) {
   const key = name.toLowerCase()
   const reservedAliases = BUILTIN_PROVIDERS.includes(key) ? LEGACY_MODEL_SUFFIXES : []
@@ -245,14 +150,6 @@ function modelOptionsFor(name, table) {
   return options
 }
 
-/**
- * 解析工具入参 `model`：接受别名，也接受任意模型 id（自由填写的落点）。
- * @param {string} requested - 入参原始值。
- * @param {string} channel - 目标通道名。
- * @param {string | undefined} fallbackId - 通道默认模型 id。
- * @param {Map<string, { id: string }>} table - models 查找表。
- * @returns {string} 最终模型 id。
- */
 function resolveRequestedModel(requested, channel, fallbackId, table) {
   const candidate = requested.trim()
   if (candidate === '') return fallbackId ?? candidate
@@ -264,13 +161,6 @@ function resolveRequestedModel(requested, channel, fallbackId, table) {
   return candidate
 }
 
-/**
- * 校验工具入参；违规即抛可读错误（发生在任何 IO 之前）。
- * count 未传时返回 undefined，由调用方回落到配置默认值。
- * @param {Record<string, unknown>} args - 模型给出的原始入参。
- * @param {string} outDir - 落盘目录。
- * @returns {{ count?: number, seed?: number, model?: string }} 已校验的可选入参。
- */
 function validateRequest(args, outDir) {
   const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : ''
   if (prompt.length === 0) throw new Error('generate_image: prompt 不能为空')
@@ -316,11 +206,6 @@ function validateRequest(args, outDir) {
   return { count, seed: args.seed, model }
 }
 
-/**
- * 解析参考图入参：URL 原样透传；data URI 校验后透传；本地绝对路径读成 base64。
- * @param {unknown} raw - image 入参。
- * @returns {Promise<string | undefined>} 可直接发给通道的参考图。
- */
 async function resolveImageInput(raw) {
   if (raw === undefined || raw === null) return undefined
   if (typeof raw !== 'string') throw new Error('generate_image: image 必须是字符串（URL / 本地绝对路径 / data URI）')
@@ -349,7 +234,6 @@ async function resolveImageInput(raw) {
   return `data:${mime};base64,${data.toString('base64')}`
 }
 
-/** 单张图片生成结果（落盘 + 可选附件）的规范值。 */
 const IMAGE_ITEM_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -372,7 +256,6 @@ const IMAGE_ITEM_SCHEMA = {
   },
 }
 
-/** generate_image 的规范输出（模型看到的内容由 render 投影）。 */
 const OUTPUT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -397,13 +280,8 @@ const OUTPUT_SCHEMA = {
   },
 }
 
-/**
- * 注册生图工具、内联图片路由，并把设置页交给客户端卡片。
- * @param {object} ctx - 插件上下文。
- * @param {object} config - 组合入口配置（volatile 字段可能是 boxed ref）。
- */
 export function apply(ctx, config) {
-  /** 现读配置：经 apply 入参的 volatile 引用，GUI 保存后无需重启即时生效。 */
+
   const imagegenConfig = () => ({
     defaultProvider: unbox(config?.defaultProvider, 'doubao'),
     apiKeys: unbox(config?.apiKeys, {}),
@@ -417,7 +295,6 @@ export function apply(ctx, config) {
     requestTimeoutMs: unbox(config?.requestTimeoutMs, 300_000),
   })
 
-  /** 当前全部通道（内置两家 + 自定义，含 models 配置的模型覆盖）。 */
   const providerTable = () => {
     const cfg = imagegenConfig()
     const models = modelEntries(cfg.models)
@@ -426,8 +303,7 @@ export function apply(ctx, config) {
       const configured = defaultModelFor(builtin, models)
       rows.set(builtin, builtinRow(builtin, {
         endpoint: cfg.baseUrls?.[builtin],
-        // 规范键 `models.<通道>` 也覆盖字符串写法（modelSpec 已归一化），
-        // 这里不再重复读 cfg.models[builtin]，避免出现第二条读法不一致的路径。
+
         model: configured,
         apiKey: cfg.apiKeys?.[builtin],
       }))
@@ -443,7 +319,6 @@ export function apply(ctx, config) {
     return { rows, names: [...rows.keys()], models }
   }
 
-  /** 解析通道名 → 归一化行；未声明即报错（错误里列出可用通道）。 */
   const resolveProvider = (providerName) => {
     const table = providerTable()
     const row = table.rows.get(providerName)
@@ -451,7 +326,6 @@ export function apply(ctx, config) {
     return { row, models: table.models }
   }
 
-  /** 工具描述里的通道清单（让模型知道当前能选哪些通道与模型）。 */
   const providerCatalog = () => {
     try {
       const { rows } = providerTable()
@@ -461,8 +335,6 @@ export function apply(ctx, config) {
     }
   }
 
-  // —— 会话内联展示：同源只读 /imagegen/<文件名> 路由 + 结果里的 Markdown 链接。
-  // webServer 未组成的部署（CLI/无头）自动跳过。
   let inlineBaseUrl
   ctx.inject(['webServer'], (webCtx) => {
     const web = webCtx.get('webServer')
@@ -478,7 +350,7 @@ export function apply(ctx, config) {
             const pathname = new URL(req.url ?? '/', 'http://x').pathname
             if (!pathname.startsWith('/imagegen/')) { res.writeHead(404); res.end('not found'); return }
             const fileName = decodeURIComponent(pathname.slice('/imagegen/'.length))
-            // 单段文件名 + 白名单扩展名：杜绝路径穿越与任意文件读取。
+
             if (!/^[\w.-]+\.(?:jpg|jpeg|png|webp)$/iu.test(fileName)) { res.writeHead(404); res.end('not found'); return }
             const cfg = imagegenConfig()
             const outDir = cfg.outDir === '' ? join(process.cwd(), 'generated-images') : cfg.outDir
@@ -502,8 +374,6 @@ export function apply(ctx, config) {
     }, 'imagegen: inline image route')
   })
 
-  // —— 工具注册。与 read_image 同一刀法：在 attachments 服务的作用域里注册，
-  // execute 才能看见附件 store、把图片作为会话附件交给前端内嵌显示。
   ctx.inject(['attachments'], (imageCtx) => {
     imageCtx.tools.register(defineTool({
       name: 'generate_image',
@@ -584,8 +454,7 @@ export function apply(ctx, config) {
           ? args.provider.trim()
           : cfg.defaultProvider
         const aspect = typeof args.aspect === 'string' && args.aspect.trim() !== '' ? args.aspect.trim() : cfg.aspect
-        // 张数：入参优先，缺省用配置默认值，并统一夹到 1–4。
-        // 夹取而非抛错：旧会话回放可能带越界入参，配置也可能被手改成越界值。
+
         const preferred = validated.count ?? cfg.count
         const requestedCount = Math.min(Math.max(preferred, LIMITS.minCount), LIMITS.maxCount)
 
@@ -596,9 +465,9 @@ export function apply(ctx, config) {
           : resolveRequestedModel(validated.model, row.name, row.model, models)
         const size = row.sizeFor(aspect)
         const prompt = buildPrompt(args.prompt.trim(), args.text_lines)
-        // 参考图一次解析、全量复用（读文件/校验都发生在任何 API 请求之前）。
+
         const imageInput = await resolveImageInput(args.image)
-        // 超时与调用方取消合并：任意一方触发即让所有等待结束。
+
         const signal = AbortSignal.any([
           exec.signal ?? new AbortController().signal,
           AbortSignal.timeout(cfg.requestTimeoutMs),
@@ -606,12 +475,6 @@ export function apply(ctx, config) {
 
         await mkdir(outDir, { recursive: true })
 
-        /**
-         * 落盘 + 可选附件，返回一条规范值。
-         * @param {object} image - 通道返回的图片字节。
-         * @param {number} index - 本批次内的序号（用于文件名与失败定位）。
-         * @returns {Promise<object>} 规范图片项。
-         */
         const commitImage = async (image, index) => {
           const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
           const suffix = `${stamp}-${index + 1}-${randomUUID().slice(0, 4)}`
@@ -646,7 +509,6 @@ export function apply(ctx, config) {
           return { path, attached: false, note: '配置关闭了会话附件，仅落盘' }
         }
 
-        /** 发一次请求并把该请求返回的每一张都落盘（通道声明 supportsN 时一次出多张）。 */
         const runBatch = async (n, index, offset) => {
           const generated = await generateImages({
             provider: { ...row, apiKey, model },
@@ -666,8 +528,6 @@ export function apply(ctx, config) {
           return committed
         }
 
-        // 一张一批：通道声明 supportsN 时用一次请求出多张，否则逐张并发。
-        // 部分失败保留成功图；全部失败才让工具报错（模型能看到完整失败原因）。
         const settled = row.supportsN
           ? await Promise.allSettled([runBatch(requestedCount, 0, 0)])
           : await Promise.allSettled(Array.from({ length: requestedCount }, (_unused, index) => runBatch(1, index, index)))
@@ -689,18 +549,11 @@ export function apply(ctx, config) {
     }))
   })
 
-  // —— 设置页策略：本插件自带客户端卡片（settings.section），关掉 schemastery 自动页，
-  // 避免同一个 namespace 出现两个页面。缺 settings 服务的部署直接跳过。
   ctx.inject(['settings'], (settingsCtx) => {
     settingsCtx.effect(() => settingsCtx.settings.configure({ auto: false }, ctx.fiber))
   })
 }
 
-/**
- * 供测试与诊断：把当前配置描述成一行行文本。
- * @param {object} config - 组合入口配置。
- * @returns {string[]} 每行一个通道。
- */
 export function describeProviders(config) {
   const models = modelEntries(unbox(config?.models, {}))
   const rows = []
