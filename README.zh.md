@@ -29,7 +29,13 @@ dsh plugin --profile desktop add @little-traincar/dsh-imagegen
 
 重新打开 Desktop 即可加载。
 
-![Alt text](1-1.png)
+### GitHub
+
+![Alt text](github.png)
+
+### NPM
+
+![Alt text](npm.png)
 
 ### Web 端
 
@@ -42,14 +48,14 @@ dsh plugin --profile web add @little-traincar/dsh-imagegen
 ### 从 GitHub 安装（指定 tag）
 
 ```powershell
-dsh plugin --profile desktop add github:little-traincar/dsh-imagegen#v0.3.1
+dsh plugin --profile desktop add github:little-traincar/dsh-imagegen#v0.3.3
 ```
 
 ### 从本地目录或 tarball 安装
 
 ```powershell
 dsh plugin --profile desktop add ./
-dsh plugin --profile desktop add ./little-traincar-dsh-imagegen-0.3.1.tgz
+dsh plugin --profile desktop add ./little-traincar-dsh-imagegen-0.3.3.tgz
 ```
 
 ## 配置

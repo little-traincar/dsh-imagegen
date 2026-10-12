@@ -29,7 +29,13 @@ dsh plugin --profile desktop add @little-traincar/dsh-imagegen
 
 Reopen Desktop to load it.
 
-![Alt text](1.png)
+### GitHub
+
+![Alt text](github-1.png)
+
+### NPM
+
+![Alt text](npm-1.png)
 
 ### Web
 
