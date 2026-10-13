@@ -2,7 +2,7 @@ export const BUILTIN_PROVIDERS = ['doubao', 'qwen']
 
 export const DEFAULT_ENDPOINTS = {
   doubao: 'https://ark.cn-beijing.volces.com/api/v3/images/generations',
-  qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1/images/generations',
+  qwen: 'https://maas.qianwenaiapi.com/compatible-mode/v1/images/generations',
 }
 
 export const DEFAULT_MODELS = {
@@ -20,11 +20,11 @@ export const DEFAULT_SIZES = {
     '16:9': '2560x1440',
   },
   qwen: {
-    '1:1': '2048*2048',
-    '2:3': '1152*2048',
-    '3:4': '1536*2048',
-    '9:16': '1080*1920',
-    '16:9': '2560*1440',
+    '1:1': '2048x2048',
+    '2:3': '1152x2048',
+    '3:4': '1536x2048',
+    '9:16': '1080x1920',
+    '16:9': '2048x1152',
   },
 }
 

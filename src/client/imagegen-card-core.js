@@ -9,7 +9,7 @@ export const IMAGEGEN_FIELDS = [
 
 export const BUILTIN_ENDPOINTS = {
   doubao: 'https://ark.cn-beijing.volces.com/api/v3/images/generations',
-  qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1/images/generations',
+  qwen: 'https://maas.qianwenaiapi.com/compatible-mode/v1/images/generations',
 }
 
 export const BUILTIN_MODELS = {

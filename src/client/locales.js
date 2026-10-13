@@ -32,7 +32,7 @@ export const zh = {
   urlDoubao: '豆包 API 地址',
   urlDoubaoHint: '默认 https://ark.cn-beijing.volces.com/api/v3/images/generations',
   urlQwen: 'qwen API 地址',
-  urlQwenHint: '默认 https://dashscope.aliyuncs.com/compatible-mode/v1/images/generations',
+  urlQwenHint: '默认 https://maas.qianwenaiapi.com/compatible-mode/v1/images/generations',
 
   save: '保存',
   discard: '放弃修改',
@@ -79,7 +79,7 @@ export const en = {
   urlDoubao: 'Doubao API endpoint',
   urlDoubaoHint: 'Default https://ark.cn-beijing.volces.com/api/v3/images/generations',
   urlQwen: 'qwen API endpoint',
-  urlQwenHint: 'Default https://dashscope.aliyuncs.com/compatible-mode/v1/images/generations',
+  urlQwenHint: 'Default https://maas.qianwenaiapi.com/compatible-mode/v1/images/generations',
 
   save: 'Save',
   discard: 'Discard',
