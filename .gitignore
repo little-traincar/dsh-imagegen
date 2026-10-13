@@ -7,3 +7,4 @@ node_modules/
 Thumbs.db
 
 # 注意：lib/ 有意提交（GitHub 直装依赖预构建产物），请勿加入忽略。
+tmp-smoke/
