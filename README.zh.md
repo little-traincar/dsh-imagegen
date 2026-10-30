@@ -91,8 +91,8 @@ dsh plugin --profile desktop add ./little-traincar-dsh-imagegen-0.3.3.tgz
 |---|---|---|
 | `baseUrl` | 必填 | 裸主机自动补 `/v1/images/generations`；以 `/v1` 结尾补 `/images/generations` |
 | `model` | 必填 | 该通道的兜底模型 id |
-| `apiKey` / `apiKeyEnv` | 空 | 直填 key，或从环境变量读（兜底 `IMAGE_API_KEY` / `OPENAI_API_KEY`） |
-| `apiKeyOptional` | false | 免鉴权端点（本地部署）必须显式打开 |
+| `apiKey` / `apiKeyEnv` | 空 | 直填 key，或从指定环境变量读；只有**未声明** `apiKeyOptional` 的自定义通道才会兜底 `IMAGE_API_KEY` / `OPENAI_API_KEY` |
+| `apiKeyOptional` | false | 免鉴权端点（本地部署）必须显式打开；打开后不再用全局环境变量兜底，也不会向该端点发送任何鉴权头 |
 | `authHeader` / `authScheme` | `authorization` / `Bearer ` | 鉴权头名与前缀 |
 | `size` / `sizes` | 1024x1024 档 | `size` 固定尺寸；`sizes` 按长宽比分档 |
 | `sizeSeparator` | `x` | 尺寸分隔符（阿里系用 `*`） |
@@ -103,6 +103,16 @@ dsh plugin --profile desktop add ./little-traincar-dsh-imagegen-0.3.3.tgz
 | `imageField` | `image` | 参考图字段名；设 `false` 表示该通道不支持图生图 |
 | `responseFormat` | `b64_json` | 或 `url` |
 | `extraBody` | 空 | 追加供应商私有字段 |
+
+### 响应里的图片 URL
+
+网关返回 `url` 字段（或 `responseFormat: "url"`）时，插件会从该地址下载图片，并施加以下限制：
+
+- 只接受 `http(s)`；每次重定向都会重新校验目标主机，最多 3 跳；
+- 生图端点在本机/内网时（本地部署、公司内网网关），允许图片 URL 指向私网地址，便于 SD-WebUI / ComfyUI 这类「返回本机图片地址」的服务；端点在公网时，指向内网/回环/链路本地地址（含 `169.254.169.254` 这类云元数据地址）的 URL 会被直接拒绝（图片 URL 是域名时先做 DNS 解析校验，解析失败同样拒绝）；
+- 单张下载上限 32MB；内容必须是 PNG/JPEG，否则拒绝写入。
+
+返回 `b64_json` 的通道不受影响。
 
 ### 模型
 

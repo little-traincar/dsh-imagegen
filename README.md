@@ -91,8 +91,8 @@ Any OpenAI-style `POST <baseUrl>/images/generations` works. Declare it in the **
 |---|---|---|
 | `baseUrl` | required | bare host gets `/v1/images/generations`; a `/v1` suffix gets `/images/generations` |
 | `model` | required | fallback model id for this channel |
-| `apiKey` / `apiKeyEnv` | empty | inline key, or read from an environment variable (fallback `IMAGE_API_KEY` / `OPENAI_API_KEY`) |
-| `apiKeyOptional` | false | keyless endpoints (local deployments) must opt in |
+| `apiKey` / `apiKeyEnv` | empty | inline key, or read from the named environment variable; only a custom channel **without** `apiKeyOptional` falls back to `IMAGE_API_KEY` / `OPENAI_API_KEY` |
+| `apiKeyOptional` | false | keyless endpoints (local deployments) must opt in; once set, no global env fallback happens and no auth header is sent to that endpoint |
 | `authHeader` / `authScheme` | `authorization` / `Bearer ` | auth header name and prefix |
 | `size` / `sizes` | 1024x1024 tier | fixed size, or a per-aspect table |
 | `sizeSeparator` | `x` | `*` for Alibaba-style sizes |
@@ -103,6 +103,16 @@ Any OpenAI-style `POST <baseUrl>/images/generations` works. Declare it in the **
 | `imageField` | `image` | reference-image field; `false` disables image-to-image |
 | `responseFormat` | `b64_json` | or `url` |
 | `extraBody` | empty | vendor-private fields |
+
+### Image URLs in responses
+
+When a gateway returns an image `url` (or you set `responseFormat: "url"`), the plugin downloads it with these rules:
+
+- only `http(s)`; every redirect hop is re-validated, at most 3 hops;
+- if the image endpoint itself is local/private (local deployments, intranet gateways), private image URLs are allowed so SD-WebUI / ComfyUI-style "return a local image URL" services keep working; if the endpoint is public, image URLs pointing at private/loopback/link-local hosts (including cloud metadata addresses such as `169.254.169.254`) are rejected (hostnames are DNS-resolved for this check, and a failed lookup is rejected too);
+- downloads are capped at 32MB per image and must be PNG/JPEG (magic-byte check), otherwise nothing is written.
+
+Channels returning `b64_json` are unaffected.
 
 ### Models
 

@@ -14,6 +14,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
+// 与宿主环境隔离：IMAGE_API_KEY / OPENAI_API_KEY 会让免鉴权通道在历史实现里被
+// 全局兜底塞上 Authorization，先清掉，避免同一台机器上环境不同导致断言时好时坏
+// （这两个变量存在的场景由 regression-security.mjs 专门覆盖）。
+for (const name of ['IMAGE_API_KEY', 'OPENAI_API_KEY']) delete process.env[name]
+
 // —— 极简 schemastery / dsh-tools 替身：任何链式调用都返回可继续链式的节点 ——
 const stubs = `
 const node = (type, extra = {}) => new Proxy({ type, ...extra }, {

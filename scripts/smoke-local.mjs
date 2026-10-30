@@ -18,6 +18,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
+// 自检必须与宿主环境隔离：IMAGE_API_KEY / OPENAI_API_KEY 会改变免鉴权通道的行为
+// （全局兜底的历史缺陷），先清掉它们，保证「免鉴权端点不发 Authorization」断言
+// 在任何机器上都成立；带全局变量的场景由 regression-security.mjs 专门覆盖。
+const GLOBAL_KEY_ENV = ['IMAGE_API_KEY', 'OPENAI_API_KEY']
+const savedGlobalKeys = new Map(GLOBAL_KEY_ENV.map((name) => [name, process.env[name]]))
+for (const name of GLOBAL_KEY_ENV) delete process.env[name]
+
 // 真实依赖在 profile 里；这里用替身让自检可独立运行。
 const stubs = `const node = (t, e = {}) => new Proxy({ t, ...e }, { get(x, k) { if (k === 'toJSON') return () => ({ type: x.t }); if (k in x) return x[k]; return (...a) => node(x.t, { ...x, [k]: a }) } }); export default { object: () => node('object'), dict: () => node('dict'), array: () => node('array'), union: () => node('union'), string: () => node('string'), number: () => node('number'), boolean: () => node('boolean'), any: () => node('any') }`
 const hook = `export async function resolve(s, c, n) { if (s === '@deepseek-ai/schemastery') return { url: 'data:text/javascript,' + encodeURIComponent(${JSON.stringify(stubs)}), shortCircuit: true }; if (s === '@deepseek-ai/dsh-tools') return { url: 'data:text/javascript,' + encodeURIComponent('export const defineTool = (o) => o'), shortCircuit: true }; return n(s, c) }`
@@ -180,6 +187,11 @@ try {
   await multi.close()
   await authServer.close()
 } finally {
+  for (const name of GLOBAL_KEY_ENV) {
+    const saved = savedGlobalKeys.get(name)
+    if (saved === undefined) delete process.env[name]
+    else process.env[name] = saved
+  }
   await binary.close()
   await arrayServer.close()
   await ndjson.close()
